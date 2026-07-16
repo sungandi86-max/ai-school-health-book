@@ -961,15 +961,20 @@ def render_workflow_poster(block):
 
 
 def render_para_run(run):
-    """본문 리듬(Round 5 고도화) — 연속된 '문단'들을 받아 문단 간격만으로 읽는
-    호흡을 만든다. 글자 크기·행간은 그대로 두고, 아래 규칙만 적용한다(모두
-    spaceBefore/spaceAfter 조정, 문장·순서 변경 없음):
+    """본문 리듬(Round 5 고도화 + Round 6 고아줄 방지) — 연속된 '문단'들을 받아
+    문단 간격만으로 읽는 호흡을 만든다. 글자 크기·행간은 그대로 두고, 아래
+    규칙만 적용한다(모두 spaceBefore/spaceAfter 조정, 문장·순서 변경 없음):
       1) 결론 문장(묶음의 마지막 문단, 문단이 2개 이상일 때만) — 앞 여백을
          키워 "이제 정리한다"는 느낌을 준다.
       2) 짧은 전환/중요 문장(30자 이하) — 앞뒤 모두 살짝 넓혀 혼자 숨 쉬게
          한다. 묶음의 처음·끝에 있어도 적용된다.
       3) 긴 문단(90자 이상) — 뒤 여백을 아주 조금 더 줘 읽고 난 뒤 잠깐
          쉬어가게 한다.
+      4) (Round 6) 결론 문장 앞 여백을 키우다 보니, 바로 앞에 카드처럼 자리를
+         많이 차지하는 요소가 있으면 이 마지막 문장 한 줄만 다음 페이지로
+         밀려 "거의 빈 페이지에 한 줄"처럼 보이는 경우가 있었다. 짧은 마무리
+         묶음(문단이 정확히 2개, 합쳐서 160자 이하)은 KeepTogether로 묶어
+         마지막 문장이 혼자 떨어져 나가지 않게 한다.
     이 함수는 full_build()의 본문 조판과 brand_samples.py의 12페이지 샘플
     렌더러가 동일하게 사용해야, 샘플에서 본 리듬이 실제 전체 조판과 같아진다."""
     out = []
@@ -1002,6 +1007,9 @@ def render_para_run(run):
         else:
             style = base
         out.append(Paragraph(esc(text), style))
+
+    if n == 2 and sum(len(p["text"]) for p in run) <= 160:
+        return [KeepTogether(out)]
     return out
 
 
