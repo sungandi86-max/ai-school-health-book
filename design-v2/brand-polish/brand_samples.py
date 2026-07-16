@@ -48,10 +48,9 @@ def render_blocks(idxs, in_practice=False):
             while j0 < n and blocks[idxs[j0]]["type"] == "para":
                 run.append(blocks[idxs[j0]])
                 j0 += 1
-            if len(run) >= 2:
-                flows.extend(bb.render_para_run(run))
-            else:
-                flows.extend(bb.produce(b, in_practice))
+            # Round 5: 문단 1개짜리도 리듬 규칙(짧은 문장/긴 문단)을 받도록
+            # 항상 render_para_run()을 거친다.
+            flows.extend(bb.render_para_run(run))
             i0 = j0
             continue
         if t == "h4":
