@@ -1,0 +1,1051 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+『보건교사를 위한 AI 업무 자동화』 전체 조판 (Book Design v2, 출판사 QA 폴리시 적용판)
+- design-v2/design_v2.py 에서 승인된 디자인 시스템(화이트+딥네이비+연블루, 소프트 카드, 4분할 페이지 리듬,
+  v2.1 타이포그래피)을 book-source-final.md 전체(PART1~8·Chapter01~22·에필로그)에 일관되게 적용한다.
+- 새 디자인을 만들지 않는다. 기존 build_pdf.py(v1 조판)는 참고하지 않는다.
+- 원고/Chapter·PART 순서/실습 내용/QR/이미지는 절대 수정하지 않는다.
+"""
+import os, re
+from reportlab.lib.pagesizes import A5
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import (
+    BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle,
+    KeepTogether, PageBreak, NextPageTemplate, Image as RLImage, Flowable
+)
+from reportlab.lib.styles import ParagraphStyle
+from PIL import Image as PILImage
+
+from parser import parse, classify_blockquote
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+ASSETS = os.path.join(BASE, "assets")
+FONTS = os.path.join(BASE, "fonts")
+QR = os.path.join(BASE, "qr")
+OUT = os.path.join(BASE, "book-v2-final.pdf")
+
+pdfmetrics.registerFont(TTFont("NotoKR", os.path.join(FONTS, "NotoKR-Regular.ttf")))
+pdfmetrics.registerFont(TTFont("NotoKR-Bold", os.path.join(FONTS, "NotoKR-Bold.ttf")))
+
+# ---------------- design system (v2.1, design-v2/design_v2.py 승인본과 동일) ----------------
+NAVY = colors.HexColor("#16233F")
+NAVY_SOFT = colors.HexColor("#4A5A7A")
+SKY = colors.HexColor("#EAF2FB")
+SKY_LINE = colors.HexColor("#D3E4F5")
+INK = colors.HexColor("#232323")
+GRAY = colors.HexColor("#8A8F99")
+WHITE = colors.white
+GOLD_TEXT = colors.HexColor("#8A6D1D")  # 주의 라벨 전용 (색상 시스템 내 강조, 새 색 추가 아님: 텍스트만)
+
+# 컴포넌트별 시각적 톤 분리를 위한 보조 포인트 색(기본 딥네이비+연블루 체계는 유지,
+# CASE/주의/한마디만 아주 옅은 보조 포인트를 추가해 서로 다른 성격의 박스로 구분되게 함)
+CASE_BG = colors.HexColor("#E7F0FA")      # 연블루보다 살짝 더 또렷한 톤(기록 카드 느낌)
+CASE_LINE = colors.HexColor("#8FB3DC")    # CASE 왼쪽 세로선
+WARN_BG = colors.HexColor("#FBF1EC")      # 아주 옅은 웜/코랄 포인트(경고색 과용 금지)
+WARN_LINE = colors.HexColor("#E3B7A0")
+WARN_TEXT = colors.HexColor("#9C5B3C")
+NOTE_LINE = colors.HexColor("#C9AE6B")    # 쑤캥의 한마디 — 저자 서명처럼 보이는 손글씨톤 포인트
+
+PAGE_W, PAGE_H = A5
+MARGIN_X = 52
+MARGIN_TOP = 50
+MARGIN_BOTTOM = 44
+CONTENT_W = PAGE_W - 2 * MARGIN_X
+
+BOOK_TITLE = "『보건교사를 위한 AI 업무 자동화』"
+BOOK_TITLE_PLAIN = "보건교사를 위한 AI 업무 자동화"
+AUTHOR = "쑤캥"
+TAGLINE = "반복되는 업무 하나를 구조로 바꾸는 프로젝트북"
+
+ASSETS_DERIVED = os.path.join(BASE, "assets_derived")
+OTTER = os.path.join(ASSETS_DERIVED, "otter_signature.png")  # assets/07_ai_workflow.png에서
+# 잘라낸 기존 그림 그대로(새 캐릭터 생성 아님) — 쑤캥 브랜드 시그니처로 제한된 위치에만 사용
+
+# PART 표지 보조 키워드 — 원고 제목은 그대로 두고, 표지에서만 보조적으로 병기한다
+PART_KEYWORDS = {
+    1: "발견하다", 2: "경계를 그리다", 3: "실패를 기록하다", 4: "구조를 만들다",
+    5: "흐름을 연결하다", 6: "운영으로 확장하다", 7: "반복을 맡기다", 8: "시스템으로 남기다",
+}
+
+# Chapter 오프닝 3변형 — 같은 디자인 시스템 안에서 성격만 다르게
+# A: 이야기형(감성 에세이 오프닝) / B: 구조·판단형(핵심 질문 중심) / C: AI·운영형(Workflow 스트립)
+CHAPTER_STYLE = {}
+for _n in (1, 2, 5, 6, 7):
+    CHAPTER_STYLE[_n] = "A"
+for _n in (3, 4, *range(8, 17)):
+    CHAPTER_STYLE[_n] = "B"
+for _n in range(17, 23):
+    CHAPTER_STYLE[_n] = "C"
+
+# ---------------- styles (design-v2 v2.1과 동일 수치) ----------------
+S = {}
+S["running"] = ParagraphStyle("running", fontName="NotoKR-Bold", fontSize=8.5, leading=11.5, textColor=GRAY)
+S["h1"] = ParagraphStyle("h1", fontName="NotoKR-Bold", fontSize=20, leading=26, textColor=NAVY)
+S["h2"] = ParagraphStyle("h2", fontName="NotoKR-Bold", fontSize=14, leading=19, textColor=NAVY, spaceBefore=10, spaceAfter=6)
+S["lead"] = ParagraphStyle("lead", fontName="NotoKR", fontSize=9.4, leading=17.4, textColor=NAVY_SOFT)
+S["body"] = ParagraphStyle("body", fontName="NotoKR", fontSize=9.6, leading=18.8, textColor=INK, spaceAfter=10)
+S["story"] = ParagraphStyle("story", fontName="NotoKR", fontSize=10, leading=19, textColor=INK, spaceAfter=13,
+                             leftIndent=11, rightIndent=11)
+S["dialogue"] = ParagraphStyle("dialogue", parent=S["story"], leftIndent=22, textColor=NAVY, fontName="NotoKR-Bold")
+S["beat"] = ParagraphStyle("beat", fontName="NotoKR-Bold", fontSize=11.5, leading=18, textColor=NAVY, alignment=TA_CENTER, spaceBefore=10, spaceAfter=10)
+S["cardlabel"] = ParagraphStyle("cardlabel", fontName="NotoKR-Bold", fontSize=9.2, leading=13, textColor=NAVY)
+S["cardbody"] = ParagraphStyle("cardbody", fontName="NotoKR", fontSize=8.8, leading=14.5, textColor=INK)
+S["caption"] = ParagraphStyle("caption", fontName="NotoKR", fontSize=8.3, leading=13.2, textColor=NAVY_SOFT, spaceBefore=6, spaceAfter=10, alignment=TA_CENTER)
+S["takeaway"] = ParagraphStyle("takeaway", fontName="NotoKR-Bold", fontSize=10.6, leading=16.8, textColor=NAVY, alignment=TA_CENTER)
+S["step_title"] = ParagraphStyle("step_title", fontName="NotoKR-Bold", fontSize=10.1, leading=14, textColor=NAVY)
+S["step_body"] = ParagraphStyle("step_body", fontName="NotoKR", fontSize=9.0, leading=14.5, textColor=INK)
+S["prompt"] = ParagraphStyle("prompt", fontName="NotoKR", fontSize=8.8, leading=14.5, textColor=NAVY, leftIndent=4)
+S["check"] = ParagraphStyle("check", fontName="NotoKR", fontSize=9.0, leading=14.5, textColor=INK)
+S["badge"] = ParagraphStyle("badge", fontName="NotoKR-Bold", fontSize=9.7, leading=12.5, textColor=NAVY, alignment=TA_CENTER)
+S["eyebrow"] = ParagraphStyle("eyebrow", fontName="NotoKR-Bold", fontSize=8, leading=11, textColor=GRAY)
+S["table_head"] = ParagraphStyle("tablehead", fontName="NotoKR-Bold", fontSize=8.4, leading=12, textColor=WHITE)
+S["table_cell"] = ParagraphStyle("tablecell", fontName="NotoKR", fontSize=8.4, leading=12.5, textColor=INK)
+S["toc_part"] = ParagraphStyle("tocpart", fontName="NotoKR-Bold", fontSize=10.6, leading=16, textColor=NAVY, spaceBefore=9)
+S["toc_chap"] = ParagraphStyle("tocchap", fontName="NotoKR", fontSize=9.2, leading=14, textColor=INK, leftIndent=12, spaceAfter=4)
+S["cover_label"] = ParagraphStyle("coverlabel", fontName="NotoKR-Bold", fontSize=9, leading=12, textColor=GRAY)
+S["subhead"] = ParagraphStyle("subhead", fontName="NotoKR-Bold", fontSize=12.6, leading=18, textColor=NAVY, spaceBefore=12, spaceAfter=6)
+
+
+def esc(t):
+    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    t = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', t)
+    t = re.sub(r'`([^`]+)`', r'<font face="NotoKR">\1</font>', t)
+    t = t.replace("  \n", "<br/>").replace("\\n", "<br/>")
+    return t
+
+
+def is_dialogue(text):
+    return bool(re.match(r'^["“”]', text.strip())) or text.strip().startswith('"')
+
+
+def running_header_flowable(left_text, right_text):
+    left = Paragraph(esc(left_text), S["running"])
+    right = Paragraph(esc(right_text), ParagraphStyle("runningR", parent=S["running"], alignment=TA_LEFT))
+    t = Table([[left, right]], colWidths=[CONTENT_W * 0.62, CONTENT_W * 0.38])
+    t.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.6, SKY_LINE),
+    ]))
+    return t
+
+
+def soft_card(rows_flowables, pad=12, bg=SKY, radius=12, box=False, box_color=SKY_LINE):
+    data = [[rows_flowables]]
+    t = Table(data, colWidths=[CONTENT_W])
+    style = [
+        ("BACKGROUND", (0, 0), (-1, -1), bg),
+        ("LEFTPADDING", (0, 0), (-1, -1), pad),
+        ("RIGHTPADDING", (0, 0), (-1, -1), pad),
+        ("TOPPADDING", (0, 0), (-1, -1), pad),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROUNDEDCORNERS", [radius, radius, radius, radius]),
+    ]
+    if box:
+        style.append(("BOX", (0, 0), (-1, -1), 1, box_color))
+    t.setStyle(TableStyle(style))
+    return t
+
+
+def stamp(text, bold_prefix="완료 확인", with_otter=False):
+    p = Paragraph(f"&#10003;&nbsp;&nbsp;{esc(bold_prefix)} — {esc(text)}",
+                  ParagraphStyle("stamp", parent=S["cardlabel"], fontSize=9.4, textColor=NAVY))
+    if with_otter and os.path.exists(OTTER):
+        otter_cell = RLImage(OTTER, width=20, height=17)
+        row = Table([[p, otter_cell]], colWidths=[CONTENT_W - 40, 40])
+        row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (1, 0), "RIGHT")]))
+        content_cell = row
+    else:
+        content_cell = p
+    t = Table([[content_cell]], colWidths=[CONTENT_W])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), SKY),
+        ("TOPPADDING", (0, 0), (-1, -1), 9), ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+    ]))
+    return t
+
+
+# ---------------- blockquote body rendering ----------------
+def body_lines(body):
+    """빈 줄 제거"""
+    return [l for l in body if l.strip()]
+
+
+def render_lines(lines, label_style=S["cardlabel"], body_style=S["cardbody"], skip_first_if_label=True):
+    out = []
+    for i, l in enumerate(lines):
+        s = l.strip()
+        if s.startswith("**") and s.endswith("**") and s.count("**") == 2:
+            out.append(Paragraph(esc(s), label_style))
+        else:
+            out.append(Paragraph(esc(s), body_style))
+    return out
+
+
+def _workflow_step_chip():
+    """Workflow 전용 화살표 칩 — 단순 '↓' 문자 대신 작은 원형 칩 안에 화살표를 넣어
+    '흐름 카드'라는 성격이 CASE/핵심 메시지 등과 뚜렷이 구분되게 한다. (텍스트 내용
+    변경 아님 — 원고의 ↓ 기호를 시각적으로만 강화)"""
+    chip = Table([[Paragraph("↓", ParagraphStyle("wfchip", fontName="NotoKR-Bold", fontSize=10.5,
+                                                  textColor=WHITE, alignment=TA_CENTER))]],
+                 colWidths=[20], rowHeights=[20])
+    chip.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), NAVY_SOFT),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+    ]))
+    row = Table([[chip]], colWidths=[CONTENT_W])
+    row.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return row
+
+
+def _workflow_step_label(n, text, is_label):
+    """단계 번호를 붙인 Workflow 단계 줄 — 화살표와 함께 '단계 관계'가 보이도록 한다."""
+    if is_label:
+        return Paragraph(esc(text), S["cardlabel"])
+    num_style = ParagraphStyle("wfnum", fontName="NotoKR-Bold", fontSize=8.6, textColor=NAVY_SOFT, alignment=TA_CENTER)
+    badge = Paragraph(f"{n:02d}", num_style)
+    body = Paragraph(esc(text), ParagraphStyle("wfstep", parent=S["cardbody"], fontName="NotoKR-Bold", textColor=NAVY))
+    row = Table([[badge, body]], colWidths=[26, CONTENT_W - 26 - 26])
+    row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return row
+
+
+def workflow_arrow_lines(lines):
+    """Workflow 전용 렌더링 — 단계마다 번호를 붙이고 ↓는 원형 칩으로 강화해
+    '흐름이 먼저 보이는' 카드가 되게 한다. 원고 텍스트는 그대로 사용한다."""
+    out = []
+    step_n = 0
+    for l in lines:
+        s = l.strip()
+        if not s:
+            continue
+        if s == "↓":
+            out.append(_workflow_step_chip())
+        elif s.startswith("**") and s.endswith("**") and s.count("**") == 2:
+            out.append(Paragraph(esc(s), S["cardlabel"]))
+        else:
+            step_n += 1
+            out.append(_workflow_step_label(step_n, s, is_label=False))
+    return out
+
+
+def box_progress_card(body):
+    lines = body_lines(body)[1:]  # 첫줄 "**프로젝트 진행 카드**" 라벨은 제외
+    fields = {}
+    order = []
+    for l in lines:
+        m = re.match(r'^\*\*(.+?)\*\*\s*(.*)$', l.strip())
+        if m:
+            k, v = m.group(1), m.group(2)
+            fields[k] = v
+            order.append(k)
+    day_chapter = fields.get("DAY", "") or next((fields[k] for k in order if k.startswith("DAY")), "")
+    make = fields.get("오늘 만드는 것", "")
+    time_ = fields.get("걸리는 시간", "")
+    diff = fields.get("난이도", "")
+    part_prog = fields.get("PART 진행", "")
+    day_key = next((k for k in order if k.startswith("DAY")), None)
+    day_val = fields.get(day_key, "") if day_key else ""
+
+    rows = [Paragraph("오늘 만드는 것", S["cardlabel"]), Spacer(1, 3),
+            Paragraph(esc(make) if make else "", ParagraphStyle("bigmake", fontName="NotoKR-Bold", fontSize=12, textColor=NAVY))]
+    stat = Table([[
+        Paragraph(esc(day_key + " " + day_val) if day_key else "", ParagraphStyle("st1", fontName="NotoKR-Bold", fontSize=9.6, textColor=NAVY)),
+        Paragraph(f"걸리는 시간<br/><b>{esc(time_)}</b>", ParagraphStyle("st2", fontName="NotoKR", fontSize=8.6, textColor=NAVY_SOFT, leading=12.2)),
+        Paragraph(f"난이도<br/><b>{esc(diff)}</b>", ParagraphStyle("st3", fontName="NotoKR", fontSize=8.6, textColor=NAVY_SOFT, leading=12.2)),
+    ]], colWidths=[CONTENT_W * 0.30, CONTENT_W * 0.35, CONTENT_W * 0.35])
+    stat.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                               ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    rows += [Spacer(1, 10), stat]
+    card = soft_card(rows, pad=16)
+    extra = []
+    if part_prog:
+        extra.append(Paragraph(esc(part_prog), ParagraphStyle("pprog", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER, spaceBefore=6)))
+    return [card] + extra
+
+
+def box_case(body):
+    """CASE — 실제 사례라는 성격이 드러나도록 번호형 기록 카드로 렌더링.
+    (텍스트 내용은 그대로, 굵은 라벨 줄에만 순번을 붙이고 왼쪽 세로선 + 살짝 더
+    또렷한 배경으로 Workflow/핵심 메시지 카드와 확실히 구분되게 한다.)"""
+    lines = body_lines(body)
+    out = []
+    n = 0
+    first_label_seen = False
+    for l in lines:
+        s = l.strip()
+        if s.startswith("**") and s.endswith("**") and s.count("**") == 2:
+            label = s.strip("*")
+            if not first_label_seen:
+                # 첫 굵은 줄은 "CASE · 제목" 자체(카드 라벨) — 사례 항목이 아니므로 번호를 매기지 않는다
+                first_label_seen = True
+                out.append(Paragraph(esc(label), S["cardlabel"]))
+            else:
+                n += 1
+                out.append(Paragraph(f'<font color="#8FB3DC"><b>{n:02d}</b></font>&nbsp;&nbsp;<b>{esc(label)}</b>', S["cardlabel"]))
+        else:
+            out.append(Paragraph(esc(s), S["cardbody"]))
+    card = soft_card(out, pad=13, bg=CASE_BG)
+    wrap = Table([[card]], colWidths=[CONTENT_W])
+    wrap.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBEFORE", (0, 0), (0, 0), 3, CASE_LINE),
+    ]))
+    return [wrap]
+
+
+def box_workflow(body):
+    """Workflow 카드 — 흐름이 먼저 보이도록 다른 카드보다 내부 여백을 넓히고
+    (다이어그램 느낌), 왼쪽에 얇은 NAVY_SOFT 세로선을 둬 CASE(파란 계열 세로선)와도
+    구분되는 '전용 스타일'로 통일한다."""
+    lines = body_lines(body)
+    card = soft_card(workflow_arrow_lines(lines), pad=18)
+    wrap = Table([[card]], colWidths=[CONTENT_W])
+    wrap.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBEFORE", (0, 0), (0, 0), 3, NAVY),
+    ]))
+    return [wrap]
+
+
+def box_caution(body):
+    """주의 — 경고색을 과하게 쓰지 않는 선에서, 연블루 카드와 즉시 구분되도록
+    아주 옅은 웜/코랄 톤만 사용한다(새 색상 체계 추가가 아니라 보조 포인트)."""
+    lines = body_lines(body)
+    label_style = ParagraphStyle("warnlabel", parent=S["cardlabel"], textColor=WARN_TEXT)
+    return [soft_card(render_lines(lines, label_style=label_style), pad=12, bg=WARN_BG, radius=12, box=True, box_color=WARN_LINE)]
+
+
+def box_core_message(body):
+    """핵심 메시지 — 문장 하나가 중심이 되도록 카드 높이를 줄이고(패딩 축소),
+    굵은 문장은 한 단계 더 크게 키워 시선이 바로 꽂히게 한다."""
+    lines = body_lines(body)
+    out = [Paragraph(esc(lines[0]), S["eyebrow"]), Spacer(1, 3)]
+    big_style = ParagraphStyle("coremsgbig", fontName="NotoKR-Bold", fontSize=11.2, leading=16.5, textColor=NAVY)
+    for l in lines[1:]:
+        s = l.strip()
+        style = big_style if s.startswith("**") and s.endswith("**") else S["cardbody"]
+        out.append(Paragraph(esc(s), style))
+    return [soft_card(out, pad=11)]
+
+
+def box_celebration(body):
+    """작은 축하 — 쑤캥 브랜드 시그니처(수달)를 제한적으로 함께 배치한다."""
+    lines = body_lines(body)
+    text = " ".join(l.strip("* ") for l in lines[1:]) if len(lines) > 1 else lines[0].strip("* ")
+    return [stamp(text, bold_prefix="작은 축하", with_otter=True)]
+
+
+def box_today_made(body):
+    lines = body_lines(body)[1:]
+    out = []
+    for l in lines:
+        s = l.strip()
+        if s.startswith("✓"):
+            out.append(Paragraph(esc(s), S["cardbody"]))
+        else:
+            out.append(Paragraph(f"<b>{esc(s)}</b>", ParagraphStyle("tm", parent=S["cardlabel"])))
+    return [soft_card([Paragraph("오늘 만든 프로젝트", S["cardlabel"]), Spacer(1, 4)] + out, pad=12)]
+
+
+def box_author_note(body):
+    """쑤캥의 한마디 — 저자 노트처럼 보이도록 수달 시그니처를 라벨 옆에 배치하고
+    (책 전체에서 8~15회 내외로 제한 사용), 왼쪽에 손글씨톤 포인트 선을 둬 일반
+    정보 박스(CASE/Workflow)와 확실히 구분한다."""
+    lines = body_lines(body)[1:]
+    label_row = [Paragraph("쑤캥의 한마디", S["cardlabel"])]
+    if os.path.exists(OTTER):
+        otter_cell = RLImage(OTTER, width=22, height=19)
+        head = Table([[otter_cell, Paragraph("쑤캥의 한마디", S["cardlabel"])]], colWidths=[26, CONTENT_W - 26 - 24])
+        head.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        out = [head, Spacer(1, 5)]
+    else:
+        out = [Paragraph("쑤캥의 한마디", S["cardlabel"]), Spacer(1, 4)]
+    out += [Paragraph(esc(l), ParagraphStyle("author", parent=S["cardbody"])) for l in lines]
+    card = soft_card(out, pad=12)
+    wrap = Table([[card]], colWidths=[CONTENT_W])
+    wrap.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBEFORE", (0, 0), (0, 0), 3, NOTE_LINE),
+    ]))
+    return [wrap]
+
+
+def box_preview(body):
+    """다음 Chapter/PART Preview — 페이지를 마무리하는 장치처럼 보이도록 채워진
+    카드 대신 얇은 상단 선 + 옅은 회색 라벨만 사용한다(다른 카드보다 가벼운 톤)."""
+    lines = body_lines(body)
+    label = lines[0].strip("* ")
+    rule = Table([[""]], colWidths=[CONTENT_W], rowHeights=[1])
+    rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SKY_LINE)]))
+    out = [rule, Spacer(1, 8),
+           Paragraph(esc(label), ParagraphStyle("previewlabel", fontName="NotoKR-Bold", fontSize=8.6, textColor=GRAY)),
+           Spacer(1, 4)]
+    out += [Paragraph(esc(l), ParagraphStyle("previewbody", parent=S["cardbody"], textColor=NAVY_SOFT)) for l in lines[1:]]
+    return out
+
+
+def box_qr(body, qr_path):
+    lines = body_lines(body)
+    title = lines[0].strip("* ")
+    desc, info = [], []
+    in_info = False
+    for l in lines[1:]:
+        s = l.strip()
+        if s.startswith("**안내**"):
+            in_info = True
+            continue
+        (info if in_info else desc).append(s)
+    left = [Paragraph(esc(title), S["cardlabel"]), Spacer(1, 3)]
+    left += [Paragraph(esc(d), S["cardbody"]) for d in desc]
+    if info:
+        left.append(Spacer(1, 4))
+        left.append(Paragraph("<b>안내</b>", S["cardbody"]))
+        left += [Paragraph(esc(d), S["cardbody"]) for d in info]
+    qr_img = RLImage(qr_path, width=62, height=62)
+    t = Table([[left, qr_img]], colWidths=[CONTENT_W - 86, 86])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+        ("BOX", (0, 0), (-1, -1), 1, SKY_LINE),
+        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    return [t]
+
+
+def box_prompt(body):
+    lines = body_lines(body)
+    out = [Paragraph("PROMPT", ParagraphStyle("promptlabel", fontName="NotoKR-Bold", fontSize=8.2, textColor=NAVY_SOFT)),
+           Spacer(1, 4)]
+    out += [Paragraph(esc(l), S["prompt"]) for l in lines]
+    return [soft_card(out, pad=11, bg=WHITE, radius=10, box=True)]
+
+
+def box_generic(body):
+    lines = body_lines(body)
+    return [soft_card(render_lines(lines), pad=12, bg=colors.HexColor("#F5F7FA"))]
+
+
+def box_checklist(items):
+    out = [Paragraph("체크리스트", S["cardlabel"]), Spacer(1, 4)]
+    for it in items:
+        txt = it.lstrip("-").strip()
+        out.append(Paragraph(f"{esc(txt)}", S["check"]))
+    return [soft_card(out, pad=11)]
+
+
+# ---------------- tables ----------------
+def parse_table_rows(rows):
+    cells = []
+    for r in rows:
+        parts = [p.strip() for p in r.strip("|").split("|")]
+        cells.append(parts)
+    return cells
+
+
+def is_before_after(cells):
+    header = [c.strip() for c in cells[0]]
+    return len(header) == 3 and "Before" in header[0] and "After" in header[-1]
+
+
+def table_before_after(cells):
+    """오늘 바뀐 것 — Before -> After 대비가 가장 먼저 보이도록, After 칸에만
+    옅은 배경을 얹어 전후 대비를 시각적으로 강화한다(카드 자체는 같은 색 체계 유지).
+    카드 내부 실제 가용 폭(soft_card의 pad=13 안쪽)을 기준으로 열 너비를 계산해야
+    After 칸 강조 배경을 추가했을 때 카드 밖으로 글자가 넘치지 않는다."""
+    body_rows = [r for i, r in enumerate(cells) if i >= 2]
+    avail_w = CONTENT_W - 2 * 13 - 4  # soft_card pad(13*2) + 안전 여유
+    out = []
+    for r in body_rows:
+        if len(r) < 3 or not (r[0].strip() or r[2].strip()):
+            continue
+        before, arrow, after = r[0], r[1] or "→", r[2]
+        row = Table([[
+            Paragraph(esc(before), ParagraphStyle("baBefore", parent=S["cardbody"], textColor=GRAY)),
+            Paragraph(f"<font color='#4A5A7A'>{esc(arrow)}</font>", ParagraphStyle("baArrow", parent=S["cardbody"], alignment=TA_CENTER)),
+            Paragraph(esc(after), ParagraphStyle("baAfter", parent=S["cardbody"], fontName="NotoKR-Bold", textColor=NAVY)),
+        ]], colWidths=[avail_w * 0.40, avail_w * 0.10, avail_w * 0.50])
+        row.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BACKGROUND", (2, 0), (2, 0), WHITE),
+            ("TOPPADDING", (2, 0), (2, 0), 6), ("BOTTOMPADDING", (2, 0), (2, 0), 6),
+            ("LEFTPADDING", (2, 0), (2, 0), 8), ("RIGHTPADDING", (2, 0), (2, 0), 8),
+            ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+        ]))
+        out.append(row)
+        out.append(Spacer(1, 4))
+    return [soft_card([Paragraph("오늘 바뀐 것", S["cardlabel"]), Spacer(1, 6)] + out, pad=13)]
+
+
+def table_generic(cells):
+    header = cells[0]
+    body_rows = [r for i, r in enumerate(cells) if i >= 2]
+    ncols = len(header)
+    data = [[Paragraph(esc(h), S["table_head"]) for h in header]]
+    for r in body_rows:
+        r = (r + [""] * ncols)[:ncols]
+        data.append([Paragraph(esc(c), S["table_cell"]) for c in r])
+    colw = CONTENT_W / ncols
+    t = Table(data, colWidths=[colw] * ncols, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("GRID", (0, 0), (-1, -1), 0.5, SKY_LINE),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, colors.HexColor("#F7FAFD")]),
+    ]))
+    return [t, Spacer(1, 8)]
+
+
+def render_table(rows):
+    cells = parse_table_rows(rows)
+    if is_before_after(cells):
+        return table_before_after(cells)
+    return table_generic(cells)
+
+
+# ---------------- image block (프로젝트 화면: 이미지가 페이지의 주인공) ----------------
+def render_image_block(block):
+    """실제 프로젝트 화면 — 이미지가 페이지의 주인공이 되도록 캡션 위에 옅은
+    '실제 화면' eyebrow로 위계를 분명히 하고, 캡션-이미지 간격을 좁혀 하나의
+    장면처럼 붙어 보이게 한다(테두리/그림자는 추가하지 않는다 — 최소한의 프레임)."""
+    fname = os.path.basename(block["src"])
+    path = os.path.join(ASSETS, fname)
+    flows = [Paragraph("실제 화면", S["eyebrow"]), Spacer(1, 5)]
+    if os.path.exists(path):
+        with PILImage.open(path) as im:
+            iw, ih = im.size
+        disp_w = CONTENT_W * 0.96
+        disp_h = ih * (disp_w / iw)
+        max_h = 410
+        if disp_h > max_h:
+            disp_h = max_h
+            disp_w = iw * (max_h / ih)
+        flows.append(RLImage(path, width=disp_w, height=disp_h, hAlign="CENTER"))
+    cap = block.get("caption", "")
+    if cap:
+        # 내부 표기(IMG-00N ·) 제거, 독자용 문장만 남긴다
+        cap_clean = re.sub(r'^IMG-\d+\s*[·\-]\s*', '', cap).strip()
+        flows.append(Paragraph(esc(cap_clean), ParagraphStyle("imgcap", parent=S["caption"], spaceBefore=4)))
+    return flows
+
+
+# ---------------- covers (화이트 기반, 여백 중심 — v2 승인 디자인 언어 확장) ----------------
+def cover_book():
+    story = [Spacer(1, 130)]
+    story.append(Paragraph(BOOK_TITLE_PLAIN.replace(" ", "<br/>", 0), S["cover_label"]))
+    story.append(Spacer(1, 8))
+    title_style = ParagraphStyle("bookTitle", fontName="NotoKR-Bold", fontSize=26, leading=33, textColor=NAVY)
+    story.append(Paragraph("보건교사를 위한<br/>AI 업무 자동화", title_style))
+    story.append(Spacer(1, 14))
+    story.append(Paragraph(TAGLINE, S["lead"]))
+    story.append(Spacer(1, 200))
+    story.append(Paragraph(AUTHOR, ParagraphStyle("authorc", fontName="NotoKR-Bold", fontSize=12, textColor=NAVY)))
+    return story
+
+
+def cover_part(num, title, chapters):
+    """PART 표지 강화판 — 대형 PART 번호 타이포 + 핵심 동사 키워드(보조 시각 요소,
+    원고 제목은 그대로 유지) + 수달 시그니처(제한적 사용)로 PART 전환을 분명하게 한다."""
+    keyword = PART_KEYWORDS.get(num, "")
+    big_num_style = ParagraphStyle("bigpartnum", fontName="NotoKR-Bold", fontSize=52, leading=54, textColor=SKY_LINE)
+    story = [Spacer(1, 62)]
+    story.append(Paragraph(f"PART {num:02d}", big_num_style))
+    if keyword:
+        story.append(Spacer(1, 2))
+        story.append(Paragraph(esc(keyword), ParagraphStyle("partkeyword", fontName="NotoKR-Bold", fontSize=13, textColor=NAVY_SOFT)))
+    story.append(Spacer(1, 22))
+    story.append(Paragraph(esc(title), S["h1"]))
+    story.append(Spacer(1, 20))
+    ch_range = f"Chapter {chapters[0]:02d}–{chapters[-1]:02d}" if len(chapters) > 1 else f"Chapter {chapters[0]:02d}"
+    story.append(Paragraph(ch_range, ParagraphStyle("partrange", fontName="NotoKR", fontSize=9.6, textColor=NAVY_SOFT)))
+    story.append(Spacer(1, 150))
+    if os.path.exists(OTTER):
+        story.append(RLImage(OTTER, width=40, height=34, hAlign="CENTER"))
+        story.append(Spacer(1, 6))
+    story.append(Paragraph(TAGLINE, ParagraphStyle("parttag", fontName="NotoKR", fontSize=8.6, textColor=GRAY, alignment=TA_CENTER)))
+    return story
+
+
+def _chip_row(labels):
+    """C형(AI·운영형) 오프닝의 작은 구조 스트립 — 사람/AI/데이터/시스템 같은
+    책 전체에서 이미 반복적으로 쓰이는 일반 개념어만 배치(원고 내용 추가 아님)."""
+    chip_style = ParagraphStyle("chip", fontName="NotoKR-Bold", fontSize=8.2, textColor=NAVY, alignment=TA_CENTER)
+    cells = []
+    for i, lab in enumerate(labels):
+        cells.append(Paragraph(esc(lab), chip_style))
+    row = [cells[0]]
+    for c in cells[1:]:
+        row.append(Paragraph("→", ParagraphStyle("chiparrow", fontName="NotoKR", fontSize=8.2, textColor=NAVY_SOFT, alignment=TA_CENTER)))
+        row.append(c)
+    n = len(row)
+    w = CONTENT_W / n
+    t = Table([row], colWidths=[w] * n)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), SKY),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+    ]))
+    return t
+
+
+def cover_chapter(num, title):
+    """Chapter 오프닝 3변형(A 이야기형 / B 구조·판단형 / C AI·운영형).
+    큰 제목·진행 카드(별도 블록)는 그대로 유지하고, 성격에 따라 상단 여백·장식
+    요소·하단 여백만 다르게 해 22개 Chapter가 전부 같은 템플릿으로 보이지 않게 한다."""
+    style = CHAPTER_STYLE.get(num, "B")
+    running_label = f"PART {BUILD_STATE['part_num']} · CHAPTER {num:02d}"
+
+    if style == "A":
+        # 이야기형: 여백을 충분히 주되, 제목 위 얇은 선 하나로 "에세이 오프닝" 느낌
+        story = [Spacer(1, 86)]
+        rule = Table([[""]], colWidths=[28], rowHeights=[2])
+        rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SKY_LINE)]))
+        story.append(rule)
+        story.append(Spacer(1, 14))
+        story.append(Paragraph(running_label, S["running"]))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(esc(title), S["h1"]))
+        story.append(Spacer(1, 90))
+        story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("chaptagA", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
+    elif style == "C":
+        # AI·운영형: 제목 아래 작은 Workflow 스트립(구조 강조)
+        story = [Spacer(1, 56)]
+        story.append(Paragraph(running_label, S["running"]))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(esc(title), S["h1"]))
+        story.append(Spacer(1, 22))
+        story.append(_chip_row(["사람", "AI", "데이터", "시스템"]))
+        story.append(Spacer(1, 60))
+        story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("chaptagC", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
+    else:
+        # B, 구조·판단형: 제목 왼쪽에 작은 정사각 포인트 + 좁은 여백(핵심 질문을 정리하듯 담백하게)
+        mark = Table([[""]], colWidths=[9], rowHeights=[9])
+        mark.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY), ("ROUNDEDCORNERS", [2, 2, 2, 2])]))
+        story = [Spacer(1, 62)]
+        story.append(mark)
+        story.append(Spacer(1, 8))
+        story.append(Paragraph(running_label, S["running"]))
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(esc(title), S["h1"]))
+        story.append(Spacer(1, 70))
+        story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("chaptagB", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
+    return story
+
+
+def cover_epilogue():
+    story = [Spacer(1, 110)]
+    story.append(Paragraph("EPILOGUE", S["running"]))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("에필로그", S["h1"]))
+    story.append(Spacer(1, 160))
+    if os.path.exists(OTTER):
+        story.append(RLImage(OTTER, width=44, height=38, hAlign="CENTER"))
+        story.append(Spacer(1, 8))
+    story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("epitag", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
+    return story
+
+
+# ---------------- TOC ----------------
+def build_toc(blocks):
+    story = [Spacer(1, 20)]
+    story.append(Paragraph("차례", S["h1"]))
+    story.append(Spacer(1, 14))
+    cur_part_title = None
+    for b in blocks:
+        if b["type"] == "part":
+            cur_part_title = f'PART {b["num"]}. {b["title"]}'
+            story.append(Paragraph(esc(cur_part_title), S["toc_part"]))
+        elif b["type"] == "chapter":
+            story.append(Paragraph(f'Chapter {b["num"]:02d}. {esc(b["title"])}', S["toc_chap"]))
+        elif b["type"] == "epilogue_head":
+            story.append(Paragraph("에필로그", S["toc_part"]))
+    return story
+
+
+# ---------------- page callbacks ----------------
+CURRENT = {"part_num": None, "part_title": "", "chapter_num": None, "chapter_title": ""}
+# BUILD_STATE: 문서 조립(story 리스트 생성) 단계에서만 쓰는 동기 상태.
+# CURRENT는 오직 _RunningHeaderMarker.draw()에서만 갱신되어야 실제 렌더링 순서와
+# 어긋나지 않는다(2~4페이지에 "에필로그" 러닝 헤더가 잘못 표시되던 버그의 원인이
+# CURRENT를 조립 단계에서 동기적으로도 같이 바꾸던 것이었음). cover_chapter()처럼
+# 조립 시점에 "지금 PART 번호가 뭔지" 알아야 하는 곳은 BUILD_STATE만 참조한다.
+BUILD_STATE = {"part_num": None}
+
+
+class _RunningHeaderMarker(Flowable):
+    """실제 문서 흐름(진짜 렌더링 시점) 중에 CURRENT를 갱신하기 위한 크기 0 마커.
+    story 리스트를 미리 다 만든 뒤 한 번에 doc.build()를 호출하는 구조상,
+    CURRENT를 파이썬 루프에서 바로 바꾸면 onPage 콜백이 항상 '루프가 끝난 뒤의
+    최종 값'만 보게 되는 버그가 있어(러닝 헤더가 전부 비거나 마지막 챕터로 고정됨),
+    실제 draw() 호출 시점(문서가 그 지점을 실제로 그릴 때)에 갱신하도록 분리."""
+
+    def __init__(self, part_num=None, chapter_num=None, chapter_title=""):
+        Flowable.__init__(self)
+        self.width = 0
+        self.height = 0
+        self._part_num = part_num
+        self._chapter_num = chapter_num
+        self._chapter_title = chapter_title
+
+    def wrap(self, availWidth, availHeight):
+        return (0, 0)
+
+    def draw(self):
+        CURRENT["part_num"] = self._part_num
+        CURRENT["chapter_num"] = self._chapter_num
+        CURRENT["chapter_title"] = self._chapter_title
+
+
+def make_body_page(canvas, doc):
+    canvas.saveState()
+    canvas.setFillColor(WHITE)
+    canvas.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
+    left = None
+    if CURRENT["chapter_num"] is not None:
+        left = f'PART {CURRENT["part_num"]} · CHAPTER {CURRENT["chapter_num"]:02d}'
+    elif CURRENT["part_num"] == "에필로그":
+        left = "에필로그"
+    if left:
+        canvas.setFont("NotoKR-Bold", 8.2)
+        canvas.setFillColor(GRAY)
+        canvas.drawString(MARGIN_X, PAGE_H - 34, left)
+        canvas.setStrokeColor(SKY_LINE)
+        canvas.setLineWidth(0.6)
+        canvas.line(MARGIN_X, PAGE_H - 40, PAGE_W - MARGIN_X, PAGE_H - 40)
+    canvas.setFont("NotoKR", 8)
+    canvas.setFillColor(GRAY)
+    canvas.drawCentredString(PAGE_W / 2, 24, str(canvas.getPageNumber()))
+    canvas.restoreState()
+
+
+def make_cover_page(canvas, doc):
+    canvas.saveState()
+    canvas.setFillColor(WHITE)
+    canvas.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
+    canvas.setFont("NotoKR", 8)
+    canvas.setFillColor(GRAY)
+    canvas.drawCentredString(PAGE_W / 2, 24, str(canvas.getPageNumber()))
+    canvas.restoreState()
+
+
+def step_badge(num_label, title):
+    badge = Table([[Paragraph(str(num_label), ParagraphStyle("stepnum", fontName="NotoKR-Bold",
+                                                              fontSize=11.5, textColor=WHITE,
+                                                              alignment=TA_CENTER))]],
+                  colWidths=[24], rowHeights=[24])
+    badge.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), NAVY),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("ROUNDEDCORNERS", [12, 12, 12, 12]),
+    ]))
+    right = Paragraph(esc(title), S["step_title"])
+    row = Table([[badge, right]], colWidths=[32, CONTENT_W - 32])
+    row.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    return row
+
+
+def render_workflow_poster(block):
+    """책 전체를 설명하는 대표 인포그래픽(IMG-002) — 삽화가 아니라 포스터처럼."""
+    fname = os.path.basename(block["src"])
+    path = os.path.join(ASSETS, fname)
+    flows = [Spacer(1, 4)]
+    flows.append(Paragraph("이 책의 Workflow", ParagraphStyle("wftitle", fontName="NotoKR-Bold",
+                                                             fontSize=14.5, textColor=NAVY, alignment=TA_CENTER)))
+    flows.append(Spacer(1, 10))
+    if os.path.exists(path):
+        with PILImage.open(path) as im:
+            iw, ih = im.size
+        disp_w = CONTENT_W * 1.0
+        disp_h = ih * (disp_w / iw)
+        max_h = 383
+        if disp_h > max_h:
+            disp_h = max_h
+            disp_w = iw * (max_h / ih)
+        flows.append(RLImage(path, width=disp_w, height=disp_h, hAlign="CENTER"))
+    cap = block.get("caption", "")
+    if cap:
+        cap_clean = re.sub(r'^IMG-\d+\s*[·\-]\s*', '', cap).strip()
+        flows.append(Paragraph(esc(cap_clean), S["caption"]))
+    flows.append(Paragraph("이 책은 이 Workflow를 하나씩 완성하는 과정입니다.", S["takeaway"]))
+    return flows
+
+
+def produce(b, in_practice=False):
+    t = b["type"]
+    if t == "para":
+        style = S["dialogue"] if is_dialogue(b["text"]) else S["story"]
+        return [Paragraph(esc(b["text"]), style)]
+    if t == "checklist":
+        return box_checklist(b["items"])
+    if t == "table":
+        return render_table(b["rows"])
+    if t == "image":
+        if b.get("anchor") == "IMG-002":
+            return render_workflow_poster(b)
+        return render_image_block(b)
+    if t == "hr":
+        return [Spacer(1, 4)]
+    if t == "blockquote":
+        return produce_blockquote(b)
+    return []
+
+
+# ---------------- blockquote kind (classify_blockquote + 보완 휴리스틱) ----------------
+def my_classify(qlines):
+    kind, body = classify_blockquote(qlines)
+    if kind == "generic_quote":
+        lines = body_lines(body)
+        first = lines[0].strip() if lines else ""
+        if re.match(r'^\*\*핵심\s*(정리|메시지)\*\*$', first):
+            return "core_message", body
+        if any("___" in l for l in lines):
+            return "prompt", body
+        if any(l.strip() == "↓" for l in lines):
+            return "workflow", body
+    return kind, body
+
+
+def produce_blockquote(b):
+    kind, body = my_classify(b["lines"])
+    if kind == "progress_card":
+        return box_progress_card(body)
+    if kind == "case":
+        return box_case(body)
+    if kind == "workflow":
+        return box_workflow(body)
+    if kind == "caution":
+        return box_caution(body)
+    if kind == "core_message":
+        return box_core_message(body)
+    if kind == "celebration":
+        return box_celebration(body)
+    if kind == "today_made":
+        return box_today_made(body)
+    if kind == "author_note":
+        return box_author_note(body)
+    if kind == "preview":
+        return box_preview(body)
+    if kind == "prompt":
+        return box_prompt(body)
+    if kind == "qr":
+        global QR_COUNTER
+        QR_COUNTER += 1
+        qr_path = os.path.join(QR, f"qr_{QR_COUNTER:02d}.png")
+        return box_qr(body, qr_path)
+    return box_generic(body)
+
+
+QR_COUNTER = 0
+
+
+# ---------------- main build ----------------
+def build():
+    blocks = parse(os.path.join(BASE, "book-source-final.md"))
+    N = len(blocks)
+
+    # PART -> chapter 목록 미리 계산 (PART 표지의 Chapter 범위 표기용)
+    part_chapters = {}
+    cur_p = None
+    for b in blocks:
+        if b["type"] == "part":
+            cur_p = b["num"]
+            part_chapters[cur_p] = []
+        elif b["type"] == "chapter":
+            part_chapters[cur_p].append(b["num"])
+
+    doc = BaseDocTemplate(OUT, pagesize=A5,
+                           leftMargin=MARGIN_X, rightMargin=MARGIN_X,
+                           topMargin=MARGIN_TOP, bottomMargin=MARGIN_BOTTOM)
+    body_frame = Frame(MARGIN_X, MARGIN_BOTTOM, CONTENT_W, PAGE_H - MARGIN_TOP - MARGIN_BOTTOM,
+                        id="body", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    cover_frame = Frame(MARGIN_X, MARGIN_BOTTOM, CONTENT_W, PAGE_H - MARGIN_TOP - MARGIN_BOTTOM,
+                         id="cover", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    doc.addPageTemplates([
+        PageTemplate(id="cover", frames=[cover_frame], onPage=make_cover_page),
+        PageTemplate(id="body", frames=[body_frame], onPage=make_body_page),
+    ])
+
+    story = []
+    story.append(NextPageTemplate("cover"))
+    story.extend(cover_book())
+    story.append(NextPageTemplate("body"))
+    story.append(PageBreak())
+    story.extend(build_toc(blocks))
+
+    keep_buffer = None
+    in_practice = False
+
+    def emit(flowables):
+        nonlocal keep_buffer
+        if keep_buffer is not None:
+            keep_buffer.extend(flowables)
+        else:
+            story.extend(flowables)
+
+    idx = 0
+    while idx < N:
+        b = blocks[idx]
+        t = b["type"]
+
+        # 표지에 이미 사용된 원고 최상단 대표 제목(H1) 중복 노출 방지
+        # (book-source-final.md 1행의 "# 『...』" 는 표지(cover_book)에서 이미 사용했으므로
+        #  본문 흐름에 그대로 노출되지 않도록 건너뜀 — 원고 삭제가 아니라 렌더링 중복 제거)
+        if t == "para" and b["text"].lstrip().startswith("#"):
+            idx += 1
+            continue
+
+        if t == "part":
+            story.append(NextPageTemplate("cover"))
+            story.append(PageBreak())
+            story.extend(cover_part(b["num"], b["title"], part_chapters.get(b["num"], [b["num"]])))
+            story.append(NextPageTemplate("body"))
+            # BUILD_STATE는 조립 단계 전용(다음 chapter cover가 자기 PART 번호를
+            # 알기 위한 용도). 실제 페이지에 표시되는 러닝 헤더는 마커가 그려지는
+            # 시점에만 CURRENT를 갱신하므로 여기서 CURRENT를 직접 건드리지 않는다.
+            BUILD_STATE["part_num"] = b["num"]
+            story.append(_RunningHeaderMarker(part_num=b["num"], chapter_num=None))
+            idx += 1
+            continue
+
+        if t == "chapter":
+            story.append(NextPageTemplate("cover"))
+            story.append(PageBreak())
+            story.extend(cover_chapter(b["num"], b["title"]))
+            story.append(NextPageTemplate("body"))
+            in_practice = False
+            story.append(_RunningHeaderMarker(part_num=BUILD_STATE["part_num"], chapter_num=b["num"], chapter_title=b["title"]))
+            idx += 1
+            continue
+
+        if t == "epilogue_head":
+            story.append(NextPageTemplate("cover"))
+            story.append(PageBreak())
+            story.extend(cover_epilogue())
+            story.append(NextPageTemplate("body"))
+            BUILD_STATE["part_num"] = "에필로그"
+            story.append(_RunningHeaderMarker(part_num="에필로그", chapter_num=None))
+            idx += 1
+            continue
+
+        if t == "keep_start":
+            keep_buffer = []
+            idx += 1
+            continue
+        if t == "keep_end":
+            if keep_buffer is not None:
+                story.append(KeepTogether(keep_buffer))
+            keep_buffer = None
+            idx += 1
+            continue
+
+        if t == "h3":
+            emit([Paragraph(esc(b["text"]), S["subhead"])])
+            idx += 1
+            continue
+
+        if t == "h4":
+            m = re.match(r'^(실습\s*\d+)\s*[—\-]\s*(.*)$', b["text"].strip())
+            if m:
+                in_practice = True
+                flows = [Paragraph(m.group(1), S["running"]), Paragraph(esc(m.group(2)), S["h2"])]
+            else:
+                in_practice = False
+                flows = [Paragraph(esc(b["text"]), S["h2"])]
+            # 다음 블록과 함께 묶어 고아 제목 방지
+            if idx + 1 < N and blocks[idx + 1]["type"] not in ("part", "chapter", "epilogue_head", "keep_start", "keep_end"):
+                nxt = blocks[idx + 1]
+                nxt_flows = produce(nxt, in_practice)
+                if keep_buffer is None:
+                    story.append(KeepTogether(flows + nxt_flows))
+                else:
+                    keep_buffer.extend(flows + nxt_flows)
+                idx += 2
+                continue
+            emit(flows)
+            idx += 1
+            continue
+
+        if t == "h5":
+            text = b["text"].strip()
+            m = re.match(r'^(\d+)\.\s*(.*)$', text)
+            m2 = re.match(r'^([A-Z])\.\s*(.*)$', text)
+            if in_practice and m:
+                flows = [step_badge(m.group(1), m.group(2))]
+            elif in_practice and m2:
+                flows = [step_badge(m2.group(1), m2.group(2))]
+            else:
+                flows = [Paragraph(esc(text), ParagraphStyle("h5sub", fontName="NotoKR-Bold", fontSize=10, textColor=NAVY, spaceBefore=6, spaceAfter=4))]
+            emit(flows)
+            idx += 1
+            continue
+
+        if t == "image" and b.get("anchor") == "IMG-002":
+            story.append(PageBreak())
+
+        if t == "para":
+            # 챕터/PART가 끝나기 직전의 마지막 짧은 문단(들) — 앞의 카드 묶음 뒤에
+            # 혼자 남아 거의 빈 페이지("고아 문단")가 되는 것을 막기 위해, 이런
+            # 위치의 문단만 의도된 클로징 문장(beat)으로 렌더링해 KeepTogether로 묶는다.
+            # (원고 문장은 그대로, 다음 챕터/PART 시작 위치도 그대로 유지됨)
+            j = idx
+            run = []
+            while j < N and blocks[j]["type"] == "para":
+                run.append(blocks[j])
+                j += 1
+            is_closing = (j < N and blocks[j]["type"] == "hr" and
+                          j + 1 < N and blocks[j + 1]["type"] in ("part", "chapter", "epilogue_head"))
+            if is_closing and len(run) <= 2 and all(len(p["text"]) <= 40 for p in run):
+                beat_flows = [Paragraph(esc(p["text"]), S["beat"]) for p in run]
+                if keep_buffer is None:
+                    story.append(KeepTogether(beat_flows))
+                else:
+                    keep_buffer.extend(beat_flows)
+                idx = j
+                continue
+
+        flows = produce(b, in_practice)
+        if keep_buffer is None and t in ("table", "image", "blockquote", "checklist") and flows:
+            story.append(KeepTogether(flows))
+        else:
+            emit(flows)
+        idx += 1
+
+    doc.build(story)
+    print("DONE", OUT, "pages built")
+
+
+if __name__ == "__main__":
+    build()
