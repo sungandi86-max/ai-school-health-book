@@ -50,6 +50,8 @@ WARN_LINE = colors.HexColor("#E3B7A0")
 WARN_TEXT = colors.HexColor("#9C5B3C")
 NOTE_LINE = colors.HexColor("#C9AE6B")    # 쑤캥의 한마디 — 저자 서명처럼 보이는 손글씨톤 포인트
 NOTE_BG = colors.HexColor("#FBF8EF")      # 쑤캥의 한마디 전용 아주 옅은 웜톤 배경(연블루와 확실히 구분)
+FRAME_BG = colors.HexColor("#F5F6F8")      # 실제 프로젝트 화면 전용 — 사진을 마운트에 얹은 듯한 아주 옅은 회색 매트(브랜드 색상 아님, 중립 프레임 전용)
+FRAME_LINE = colors.HexColor("#E5E8ED")    # 위 매트의 아주 연한 테두리
 
 PAGE_W, PAGE_H = A5
 MARGIN_X = 52
@@ -88,7 +90,7 @@ S["running"] = ParagraphStyle("running", fontName="NotoKR-Bold", fontSize=8.5, l
 S["h1"] = ParagraphStyle("h1", fontName="NotoKR-Bold", fontSize=20, leading=26, textColor=NAVY)
 S["h2"] = ParagraphStyle("h2", fontName="NotoKR-Bold", fontSize=14, leading=19, textColor=NAVY, spaceBefore=10, spaceAfter=6)
 S["lead"] = ParagraphStyle("lead", fontName="NotoKR", fontSize=9.4, leading=17.4, textColor=NAVY_SOFT)
-S["body"] = ParagraphStyle("body", fontName="NotoKR", fontSize=9.6, leading=18.8, textColor=INK, spaceAfter=10)
+S["body"] = ParagraphStyle("body", fontName="NotoKR", fontSize=9.6, leading=18.8, textColor=INK, spaceAfter=11.5)
 S["story"] = ParagraphStyle("story", fontName="NotoKR", fontSize=10, leading=19, textColor=INK, spaceAfter=13,
                              leftIndent=11, rightIndent=11)
 S["dialogue"] = ParagraphStyle("dialogue", parent=S["story"], leftIndent=22, textColor=NAVY, fontName="NotoKR-Bold")
@@ -96,7 +98,7 @@ S["beat"] = ParagraphStyle("beat", fontName="NotoKR-Bold", fontSize=11.5, leadin
 S["cardlabel"] = ParagraphStyle("cardlabel", fontName="NotoKR-Bold", fontSize=9.2, leading=13, textColor=NAVY)
 S["cardbody"] = ParagraphStyle("cardbody", fontName="NotoKR", fontSize=8.8, leading=14.5, textColor=INK)
 S["caption"] = ParagraphStyle("caption", fontName="NotoKR", fontSize=8.3, leading=13.2, textColor=NAVY_SOFT, spaceBefore=6, spaceAfter=10, alignment=TA_CENTER)
-S["takeaway"] = ParagraphStyle("takeaway", fontName="NotoKR-Bold", fontSize=10.6, leading=16.8, textColor=NAVY, alignment=TA_CENTER)
+S["takeaway"] = ParagraphStyle("takeaway", fontName="NotoKR-Bold", fontSize=11.8, leading=17.5, textColor=NAVY, alignment=TA_CENTER, spaceBefore=10)
 S["step_title"] = ParagraphStyle("step_title", fontName="NotoKR-Bold", fontSize=10.1, leading=14, textColor=NAVY)
 S["step_body"] = ParagraphStyle("step_body", fontName="NotoKR", fontSize=9.0, leading=14.5, textColor=INK)
 S["prompt"] = ParagraphStyle("prompt", fontName="NotoKR", fontSize=8.8, leading=14.5, textColor=NAVY, leftIndent=4)
@@ -206,7 +208,10 @@ def render_lines(lines, label_style=S["cardlabel"], body_style=S["cardbody"], sk
 def _workflow_step_chip():
     """Workflow 전용 화살표 칩 — 단순 '↓' 문자 대신 작은 원형 칩 안에 화살표를 넣어
     '흐름 카드'라는 성격이 CASE/핵심 메시지 등과 뚜렷이 구분되게 한다. (텍스트 내용
-    변경 아님 — 원고의 ↓ 기호를 시각적으로만 강화)"""
+    변경 아님 — 원고의 ↓ 기호를 시각적으로만 강화)
+    Final Polish: 화살표를 카드 전체 폭 기준 가운데가 아니라 번호 배지 칸(26pt)
+    바로 아래로 옮겨, 번호-화살표-번호가 하나의 세로 축으로 이어지는 '경로'처럼
+    보이게 한다 — 읽는 카드가 아니라 따라가는 다이어그램에 가깝게."""
     chip = Table([[Paragraph("↓", ParagraphStyle("wfchip", fontName="NotoKR-Bold", fontSize=10.5,
                                                   textColor=WHITE, alignment=TA_CENTER))]],
                  colWidths=[20], rowHeights=[20])
@@ -215,11 +220,15 @@ def _workflow_step_chip():
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROUNDEDCORNERS", [10, 10, 10, 10]),
     ]))
-    row = Table([[chip]], colWidths=[CONTENT_W])
+    # 번호 배지(26pt 칸)의 중심에 화살표 중심이 오도록 같은 26pt 칸에 배치하고
+    # 본문 칸은 비워 둔다 — 번호 칼럼과 화살표 칼럼이 시각적으로 같은 세로선 위에 놓인다.
+    avail_w = CONTENT_W - 2 * 18  # box_workflow의 soft_card pad=18 안에서 실제로 쓸 수 있는 폭
+    row = Table([[chip, ""]], colWidths=[26, avail_w - 26])
     row.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
     return row
 
@@ -231,7 +240,8 @@ def _workflow_step_label(n, text, is_label):
     num_style = ParagraphStyle("wfnum", fontName="NotoKR-Bold", fontSize=8.6, textColor=NAVY_SOFT, alignment=TA_CENTER)
     badge = Paragraph(f"{n:02d}", num_style)
     body = Paragraph(esc(text), ParagraphStyle("wfstep", parent=S["cardbody"], fontName="NotoKR-Bold", textColor=NAVY))
-    row = Table([[badge, body]], colWidths=[26, CONTENT_W - 26 - 26])
+    avail_w = CONTENT_W - 2 * 18  # box_workflow의 soft_card pad=18 안에서 실제로 쓸 수 있는 폭
+    row = Table([[badge, body]], colWidths=[26, avail_w - 26])
     row.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
@@ -606,10 +616,15 @@ def render_table(rows):
 def render_image_block(block):
     """실제 프로젝트 화면 — 이미지가 페이지의 주인공이 되도록 캡션 위에 옅은
     '실제 화면' eyebrow로 위계를 분명히 하고, 캡션-이미지 간격을 좁혀 하나의
-    장면처럼 붙어 보이게 한다(테두리/그림자는 추가하지 않는다 — 최소한의 프레임)."""
+    장면처럼 붙어 보이게 한다.
+    Final Polish: 이미지 자체·캡션 문장은 그대로 두고, 화면을 사진 마운트에
+    얹은 듯한 아주 옅은 회색 매트 + 아주 연한 테두리로 감싸 '스크린샷을 그냥
+    붙여넣은 느낌'이 아니라 '지면에 신중하게 배치한 실제 화면'처럼 보이게 한다.
+    매트의 아래·오른쪽 여백을 위·왼쪽보다 살짝 더 주어 아주 얇은 그림자처럼
+    읽히게 하되, 새 장식이나 브랜드 색은 추가하지 않는다(중립 회색 한 톤)."""
     fname = os.path.basename(block["src"])
     path = os.path.join(ASSETS, fname)
-    flows = [Paragraph("실제 화면", S["eyebrow"]), Spacer(1, 5)]
+    flows = [Paragraph("실제 화면", S["eyebrow"]), Spacer(1, 6)]
     if os.path.exists(path):
         with PILImage.open(path) as im:
             iw, ih = im.size
@@ -619,12 +634,28 @@ def render_image_block(block):
         if disp_h > max_h:
             disp_h = max_h
             disp_w = iw * (max_h / ih)
-        flows.append(RLImage(path, width=disp_w, height=disp_h, hAlign="CENTER"))
+        img = RLImage(path, width=disp_w, height=disp_h)
+        mat = Table([[img]], colWidths=[disp_w + 8])
+        mat.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), FRAME_BG),
+            ("BOX", (0, 0), (-1, -1), 0.75, FRAME_LINE),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        wrap = Table([[mat]], colWidths=[CONTENT_W])
+        wrap.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        flows.append(wrap)
     cap = block.get("caption", "")
     if cap:
         # 내부 표기(IMG-00N ·) 제거, 독자용 문장만 남긴다
         cap_clean = re.sub(r'^IMG-\d+\s*[·\-]\s*', '', cap).strip()
-        flows.append(Paragraph(esc(cap_clean), ParagraphStyle("imgcap", parent=S["caption"], spaceBefore=4)))
+        flows.append(Paragraph(esc(cap_clean), ParagraphStyle("imgcap", parent=S["caption"], spaceBefore=7)))
     return flows
 
 
@@ -704,7 +735,10 @@ def cover_chapter(num, title):
     running_label = f"PART {BUILD_STATE['part_num']} · CHAPTER {num:02d}"
 
     if style == "A":
-        # 이야기형: 여백을 충분히 주되, 제목 위 얇은 선 하나로 "에세이 오프닝" 느낌
+        # 이야기형: 여백을 충분히 주되, 제목 위 얇은 선 하나로 "에세이 오프닝" 느낌.
+        # Final Polish: 제목 뒤 여백을 하나의 거대한 빈 칸(90pt)으로 두지 않고
+        # 절반 가까이로 줄여, 제목 → 태그라인 → 진행 카드로 시선이 자연스럽게
+        # 이어지는 리듬을 만든다(장식 추가 없이 간격만 조정).
         story = [Spacer(1, 86)]
         rule = Table([[""]], colWidths=[28], rowHeights=[2])
         rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SKY_LINE)]))
@@ -713,7 +747,7 @@ def cover_chapter(num, title):
         story.append(Paragraph(running_label, S["running"]))
         story.append(Spacer(1, 10))
         story.append(Paragraph(esc(title), S["h1"]))
-        story.append(Spacer(1, 90))
+        story.append(Spacer(1, 54))
         story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("chaptagA", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
     elif style == "C":
         # AI·운영형: 제목 아래 작은 Workflow 스트립(구조 강조)
@@ -723,7 +757,7 @@ def cover_chapter(num, title):
         story.append(Paragraph(esc(title), S["h1"]))
         story.append(Spacer(1, 22))
         story.append(_chip_row(["사람", "AI", "데이터", "시스템"]))
-        story.append(Spacer(1, 60))
+        story.append(Spacer(1, 38))
         story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("chaptagC", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
     else:
         # B, 구조·판단형: 제목 왼쪽에 작은 정사각 포인트 + 좁은 여백(핵심 질문을 정리하듯 담백하게)
@@ -735,7 +769,7 @@ def cover_chapter(num, title):
         story.append(Paragraph(running_label, S["running"]))
         story.append(Spacer(1, 10))
         story.append(Paragraph(esc(title), S["h1"]))
-        story.append(Spacer(1, 70))
+        story.append(Spacer(1, 42))
         story.append(Paragraph(BOOK_TITLE_PLAIN, ParagraphStyle("chaptagB", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER)))
     return story
 
