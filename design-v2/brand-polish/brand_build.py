@@ -366,7 +366,10 @@ def box_workflow(body):
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBEFORE", (0, 0), (0, 0), 2.5, NAVY),  # Final Book Polish: 덜어내기 — 3->2.5pt
+        # Round 7(인쇄 교정): 왼쪽 세로선이 본문 텍스트보다 더 진한 순색
+        # NAVY라 카드 안에서 가장 먼저 눈에 띄었다. 다른 보조선들과 같은 톤
+        # (NAVY_SOFT)으로 한 단계 낮춰 번호·문장이 먼저 읽히게 한다.
+        ("LINEBEFORE", (0, 0), (0, 0), 2.5, NAVY_SOFT),
     ]))
     return [wrap]
 
@@ -718,8 +721,11 @@ def cover_part(num, title, chapters):
     big_num_style = ParagraphStyle("bigpartnum", fontName="NotoKR-Bold", fontSize=132, leading=118, textColor=SKY)
     story = [Spacer(1, 34)]
     story.append(Paragraph(f"{num:02d}", big_num_style))
+    # Round 7(인쇄 교정): 이 짧은 선은 숫자와 라벨 사이의 구분선일 뿐인데
+    # 순색 NAVY라 옆의 옅은 숫자·라벨보다 더 진하게 튀었다. 제목보다 뒤로
+    # 물러나도록 다른 보조 요소와 같은 NAVY_SOFT로 한 단계 낮춘다(두께는 유지).
     rule = Table([[""]], colWidths=[36], rowHeights=[3])
-    rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY)]))
+    rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY_SOFT)]))
     story.append(Spacer(1, 4))
     story.append(rule)
     story.append(Spacer(1, 10))
