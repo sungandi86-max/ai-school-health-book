@@ -34,6 +34,9 @@ pdfmetrics.registerFont(TTFont("NotoKR-Bold", os.path.join(FONTS, "NotoKR-Bold.t
 # ---------------- design system (v2.1, design-v2/design_v2.py 승인본과 동일) ----------------
 NAVY = colors.HexColor("#16233F")
 NAVY_SOFT = colors.HexColor("#4A5A7A")
+# Round 5 — Workflow 화살표 칩 전용, NAVY_SOFT를 흰색 쪽으로 25% 블렌드한 옅은 톤.
+# 새 색상 체계 추가가 아니라 기존 NAVY_SOFT를 살짝 연하게 낮춘 파생색.
+NAVY_SOFT_LIGHT = colors.HexColor("#77839B")
 SKY = colors.HexColor("#EAF2FB")
 SKY_LINE = colors.HexColor("#D3E4F5")
 INK = colors.HexColor("#232323")
@@ -156,11 +159,13 @@ def running_header_flowable(left_text, right_text):
     return t
 
 
-def soft_card(rows_flowables, pad=12, bg=SKY, radius=10, box=False, box_color=SKY_LINE):
-    """Final Book Polish — 카드가 'UI 컴포넌트'처럼 보이지 않도록 모서리를
-    한 단계 덜 둥글게(radius 12->10, 약 17% 축소) 하고, 배경색은 그대로 두되
-    아주 연한 0.3~0.5pt 테두리를 항상 그린다(그림자·입체효과·새 색상 추가 없음 —
-    카드의 경계를 화면 버튼이 아니라 인쇄물의 옅은 박스처럼 보이게 하는 선 하나뿐)."""
+def soft_card(rows_flowables, pad=11, bg=SKY, radius=10, box=False, box_color=SKY_LINE):
+    """Final Book Polish (Round 4~5) — 카드가 'UI 컴포넌트'처럼 보이지 않도록
+    모서리를 한 단계 덜 둥글게(radius 12->10) 하고, 배경색은 그대로 두되 아주
+    연한 테두리 한 줄만 그린다. Round 5에서 기본 패딩을 12->11로 살짝 줄이고
+    테두리를 0.4/0.5->0.3/0.35pt로 한 번 더 낮춰 종이 위 옅은 상자에 더
+    가깝게 했다(그림자·입체효과·새 색상은 추가하지 않음 — 애초에 그림자 자체가
+    없었으므로 이번에도 없음)."""
     data = [[rows_flowables]]
     t = Table(data, colWidths=[CONTENT_W])
     style = [
@@ -171,7 +176,7 @@ def soft_card(rows_flowables, pad=12, bg=SKY, radius=10, box=False, box_color=SK
         ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ROUNDEDCORNERS", [radius, radius, radius, radius]),
-        ("BOX", (0, 0), (-1, -1), 0.5 if box else 0.4, box_color),
+        ("BOX", (0, 0), (-1, -1), 0.35 if box else 0.3, box_color),
     ]
     t.setStyle(TableStyle(style))
     return t
@@ -221,18 +226,22 @@ def _workflow_step_chip():
     변경 아님 — 원고의 ↓ 기호를 시각적으로만 강화)
     Final Polish: 화살표를 카드 전체 폭 기준 가운데가 아니라 번호 배지 칸(26pt)
     바로 아래로 옮겨, 번호-화살표-번호가 하나의 세로 축으로 이어지는 '경로'처럼
-    보이게 한다 — 읽는 카드가 아니라 따라가는 다이어그램에 가깝게."""
-    chip = Table([[Paragraph("↓", ParagraphStyle("wfchip", fontName="NotoKR-Bold", fontSize=10.5,
+    보이게 한다 — 읽는 카드가 아니라 따라가는 다이어그램에 가깝게.
+    Round 5: Workflow에서 가장 먼저 읽혀야 하는 것은 문장(번호가 붙은 단계
+    설명)이지 화살표가 아니므로, 칩을 20pt->15pt(25% 축소)로 줄이고 배경색도
+    NAVY_SOFT의 옅은 톤(NAVY_SOFT_LIGHT)으로 낮춰 화살표는 '흐름을 보조'하는
+    역할로 물러나게 한다. Workflow의 구조(번호·단계·화살표 자체) 는 그대로."""
+    chip = Table([[Paragraph("↓", ParagraphStyle("wfchip", fontName="NotoKR-Bold", fontSize=7.6,
                                                   textColor=WHITE, alignment=TA_CENTER))]],
-                 colWidths=[20], rowHeights=[20])
+                 colWidths=[15], rowHeights=[15])
     chip.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), NAVY_SOFT),
+        ("BACKGROUND", (0, 0), (-1, -1), NAVY_SOFT_LIGHT),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+        ("ROUNDEDCORNERS", [7, 7, 7, 7]),
     ]))
     # 번호 배지(26pt 칸)의 중심에 화살표 중심이 오도록 같은 26pt 칸에 배치하고
     # 본문 칸은 비워 둔다 — 번호 칼럼과 화살표 칼럼이 시각적으로 같은 세로선 위에 놓인다.
-    avail_w = CONTENT_W - 2 * 18  # box_workflow의 soft_card pad=18 안에서 실제로 쓸 수 있는 폭
+    avail_w = CONTENT_W - 2 * 16  # box_workflow의 soft_card pad=16 안에서 실제로 쓸 수 있는 폭
     row = Table([[chip, ""]], colWidths=[26, avail_w - 26])
     row.setStyle(TableStyle([
         ("ALIGN", (0, 0), (0, 0), "CENTER"),
@@ -253,7 +262,7 @@ def _workflow_step_label(n, text, is_label):
     # 문장까지 볼드로 만들 필요는 없다. 굵기를 빼고 색만 NAVY로 유지해 조용히
     # 구분되게 한다.
     body = Paragraph(esc(text), ParagraphStyle("wfstep", parent=S["cardbody"], textColor=NAVY))
-    avail_w = CONTENT_W - 2 * 18  # box_workflow의 soft_card pad=18 안에서 실제로 쓸 수 있는 폭
+    avail_w = CONTENT_W - 2 * 16  # box_workflow의 soft_card pad=16 안에서 실제로 쓸 수 있는 폭
     row = Table([[badge, body]], colWidths=[26, avail_w - 26])
     row.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -309,7 +318,7 @@ def box_progress_card(body):
     stat.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     rows += [Spacer(1, 10), stat]
-    card = soft_card(rows, pad=16)
+    card = soft_card(rows, pad=15)
     extra = []
     if part_prog:
         extra.append(Paragraph(esc(part_prog), ParagraphStyle("pprog", fontName="NotoKR", fontSize=8.3, textColor=GRAY, alignment=TA_CENTER, spaceBefore=6)))
@@ -337,7 +346,7 @@ def box_case(body):
                 out.append(Paragraph(f'<font color="#8FB3DC"><b>{n:02d}</b></font>&nbsp;&nbsp;<b>{esc(label)}</b>', S["cardlabel"]))
         else:
             out.append(Paragraph(esc(s), S["cardbody"]))
-    card = soft_card(out, pad=13, bg=CASE_BG)
+    card = soft_card(out, pad=12, bg=CASE_BG)
     wrap = Table([[card]], colWidths=[CONTENT_W])
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
@@ -352,7 +361,7 @@ def box_workflow(body):
     (다이어그램 느낌), 왼쪽에 얇은 NAVY_SOFT 세로선을 둬 CASE(파란 계열 세로선)와도
     구분되는 '전용 스타일'로 통일한다."""
     lines = body_lines(body)
-    card = soft_card(workflow_arrow_lines(lines), pad=18)
+    card = soft_card(workflow_arrow_lines(lines), pad=16)
     wrap = Table([[card]], colWidths=[CONTENT_W])
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
@@ -445,7 +454,7 @@ def box_author_note(body):
                                                       fontSize=26, leading=18, textColor=NOTE_LINE))
     out.append(quote_mark)
     out += [Paragraph(esc(l), ParagraphStyle("author", parent=S["cardbody"], fontSize=9.2, leading=15.6)) for l in lines]
-    card = soft_card(out, pad=14, bg=NOTE_BG)
+    card = soft_card(out, pad=13, bg=NOTE_BG)
     wrap = Table([[card]], colWidths=[CONTENT_W])
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
@@ -456,16 +465,19 @@ def box_author_note(body):
 
 
 def box_preview(body):
-    """다음 Chapter/PART Preview — 페이지를 마무리하는 장치처럼 보이도록 채워진
-    카드 대신 얇은 상단 선 + 옅은 회색 라벨만 사용한다(다른 카드보다 가벼운 톤)."""
+    """다음 Chapter/PART Preview — Round 5: 남아 있던 '디자인 요소' 느낌을 한
+    번 더 덜어낸다. 전체 폭 굵은 선 대신 짧은 선(40pt)만 남기고, 라벨은 더
+    작고 볼드를 빼 속삭이듯 표시하며, 본문 문장은 카드 전용 색(NAVY_SOFT) 대신
+    일반 본문과 같은 색(INK)·스타일(S["story"])로 렌더링해 "다음 이야기를
+    살짝 들려주는 문장"처럼 본문에 자연스럽게 이어지게 한다."""
     lines = body_lines(body)
     label = lines[0].strip("* ")
-    rule = Table([[""]], colWidths=[CONTENT_W], rowHeights=[1])
+    rule = Table([[""]], colWidths=[40], rowHeights=[0.75])
     rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SKY_LINE)]))
-    out = [rule, Spacer(1, 8),
-           Paragraph(esc(label), ParagraphStyle("previewlabel", fontName="NotoKR-Bold", fontSize=8.6, textColor=GRAY)),
+    out = [rule, Spacer(1, 7),
+           Paragraph(esc(label), ParagraphStyle("previewlabel", fontName="NotoKR", fontSize=7.6, textColor=GRAY)),
            Spacer(1, 4)]
-    out += [Paragraph(esc(l), ParagraphStyle("previewbody", parent=S["cardbody"], textColor=NAVY_SOFT)) for l in lines[1:]]
+    out += [Paragraph(esc(l), ParagraphStyle("previewbody", parent=S["story"], leftIndent=0, rightIndent=0)) for l in lines[1:]]
     return out
 
 
@@ -564,7 +576,7 @@ def table_before_after(cells):
     # 원고 자체에 "#### 오늘 바뀐 것" 제목이 이미 별도로 렌더링되므로,
     # 카드 안에서 같은 라벨을 다시 넣으면 중복 표현이 된다(정리 대상).
     # 카드는 내용만 담고, 제목 역할은 원고 헤딩에게 맡긴다.
-    return [soft_card(out[:-1] if out and isinstance(out[-1], Spacer) else out, pad=13)]
+    return [soft_card(out[:-1] if out and isinstance(out[-1], Spacer) else out, pad=12)]
 
 
 def is_blank_form(cells):
@@ -589,20 +601,23 @@ def table_generic(cells):
     colw = CONTENT_W / ncols
     row_heights = None
     if is_form:
-        # 워크북처럼 보이도록 빈 칸의 높이를 넉넉히 키우고, 옅은 하늘색 바탕 +
-        # 칸 사이 구분선만 남겨 "적어 넣는 공간"이라는 인상을 준다.
-        row_heights = [None] + [30] * row_count
+        # Round 5: Workbook 느낌 강화 — 실제 실습장처럼 "쓰는 줄"이 우선 보이게
+        # 한다. 칸 높이를 조금 더 키우고(30→34) 안쪽 여백을 넉넉히 주어 손으로
+        # 적을 자리처럼 보이게 하되, 세로 칸 구분선은 더 옅게 줄여 Canva식
+        # 촘촘한 표 느낌을 덜어내고, 실제로 "쓰는 줄"인 가로선만 살짝 또렷하게
+        # 남긴다. 새 색·아이콘·장식은 추가하지 않는다.
+        row_heights = [None] + [34] * row_count
     t = Table(data, colWidths=[colw] * ncols, rowHeights=row_heights, repeatRows=1)
     if is_form:
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
             ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F7FAFD")),
-            ("LINEBELOW", (0, 0), (-1, -2), 0.75, SKY_LINE),
-            ("BOX", (0, 1), (-1, -1), 1, SKY_LINE),
-            ("INNERGRID", (0, 1), (-1, -1), 0.75, SKY_LINE),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.9, SKY_LINE),
+            ("BOX", (0, 1), (-1, -1), 0.75, SKY_LINE),
+            ("INNERGRID", (0, 1), (-1, -1), 0.4, SKY_LINE),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ]))
         return [t, Spacer(1, 4),
                 Paragraph(tracked("WRITE HERE") + "  ·  직접 적어보세요",
@@ -649,14 +664,18 @@ def render_image_block(block):
             disp_h = max_h
             disp_w = iw * (max_h / ih)
         img = RLImage(path, width=disp_w, height=disp_h)
+        # Round 5 ⑦: 이 페이지는 이미 가장 완성도가 높다고 판단되어 새로 꾸미지
+        # 않는다. 다만 다른 카드들의 테두리를 이번 라운드에서 전반적으로 더
+        # 연하게 줄인 것과 톤을 맞추기 위해, 매트 테두리만 아주 살짝 더
+        # 얇게 낮춘다(불필요하게 이미지보다 튀는 강조를 덜어냄).
         mat = Table([[img]], colWidths=[disp_w + 8])
         mat.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), FRAME_BG),
-            ("BOX", (0, 0), (-1, -1), 0.75, FRAME_LINE),
+            ("BOX", (0, 0), (-1, -1), 0.6, FRAME_LINE),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ]))
         wrap = Table([[mat]], colWidths=[CONTENT_W])
         wrap.setStyle(TableStyle([
@@ -691,8 +710,12 @@ def cover_part(num, title, chapters):
     """PART 표지 — 새 막이 열리는 느낌을 위해 PART 번호를 페이지의 지배적인
     그래픽 요소로 키우고(캡션이 아니라 디자인 요소), 키워드는 짧게 트래킹된
     라벨로 보조 역할만 하게 한다. 제목·색상 체계·프레임 여백 구조는 그대로다."""
+    # Round 5: 우선순위를 제목 -> PART 번호 -> 키워드 순으로 다시 정리한다.
+    # 번호는 크기(132pt)는 유지하되 색을 한 단계 더 옅은 SKY(카드 배경에도 쓰는
+    # 기존 색)로 낮춰 "배경 그래픽"처럼 물러나게 하고, 키워드는 크기를 줄여
+    # 제목과 경쟁하지 않는 보조 라벨로 만든다. 제목(S["h1"]) 자체는 손대지 않는다.
     keyword = PART_KEYWORDS.get(num, "")
-    big_num_style = ParagraphStyle("bigpartnum", fontName="NotoKR-Bold", fontSize=132, leading=118, textColor=SKY_LINE)
+    big_num_style = ParagraphStyle("bigpartnum", fontName="NotoKR-Bold", fontSize=132, leading=118, textColor=SKY)
     story = [Spacer(1, 34)]
     story.append(Paragraph(f"{num:02d}", big_num_style))
     rule = Table([[""]], colWidths=[36], rowHeights=[3])
@@ -704,8 +727,8 @@ def cover_part(num, title, chapters):
         "partno", fontName="NotoKR-Bold", fontSize=9.4, leading=12, textColor=NAVY_SOFT)))
     if keyword:
         story.append(Spacer(1, 3))
-        story.append(Paragraph(esc(keyword), ParagraphStyle("partkeyword", fontName="NotoKR-Bold", fontSize=14.5, textColor=NAVY_SOFT)))
-    story.append(Spacer(1, 16))
+        story.append(Paragraph(esc(keyword), ParagraphStyle("partkeyword", fontName="NotoKR-Bold", fontSize=11, textColor=NAVY_SOFT)))
+    story.append(Spacer(1, 18))
     story.append(Paragraph(esc(title), S["h1"]))
     story.append(Spacer(1, 16))
     ch_range = f"Chapter {chapters[0]:02d}–{chapters[-1]:02d}" if len(chapters) > 1 else f"Chapter {chapters[0]:02d}"
@@ -938,20 +961,47 @@ def render_workflow_poster(block):
 
 
 def render_para_run(run):
-    """본문 리듬 — 연속된 여러 '문단'을 한 번에 받아, 짧은 pivot 문장(문단 전환/
-    사례 전환으로 보이는 문장)과 묶음의 마지막 문단 뒤에 더 넓은 간격(spaceAfter만)을
-    줘 숨을 쉬게 한다. 행간·문장·순서는 그대로 두고 문단 간격만 다르게 쓴다.
-    full_build()의 본문 조판과 brand_samples.py의 12페이지 샘플 렌더러가 동일하게
-    이 함수를 통해서만 문단을 렌더링해야, 샘플에서 본 리듬이 실제 전체 조판과
-    같아진다."""
+    """본문 리듬(Round 5 고도화) — 연속된 '문단'들을 받아 문단 간격만으로 읽는
+    호흡을 만든다. 글자 크기·행간은 그대로 두고, 아래 규칙만 적용한다(모두
+    spaceBefore/spaceAfter 조정, 문장·순서 변경 없음):
+      1) 결론 문장(묶음의 마지막 문단, 문단이 2개 이상일 때만) — 앞 여백을
+         키워 "이제 정리한다"는 느낌을 준다.
+      2) 짧은 전환/중요 문장(30자 이하) — 앞뒤 모두 살짝 넓혀 혼자 숨 쉬게
+         한다. 묶음의 처음·끝에 있어도 적용된다.
+      3) 긴 문단(90자 이상) — 뒤 여백을 아주 조금 더 줘 읽고 난 뒤 잠깐
+         쉬어가게 한다.
+    이 함수는 full_build()의 본문 조판과 brand_samples.py의 12페이지 샘플
+    렌더러가 동일하게 사용해야, 샘플에서 본 리듬이 실제 전체 조판과 같아진다."""
     out = []
+    n = len(run)
     for i, p in enumerate(run):
-        base = S["dialogue"] if is_dialogue(p["text"]) else S["story"]
-        pause = S["dialogue_pause"] if is_dialogue(p["text"]) else S["story_pause"]
-        is_last = (i == len(run) - 1)
-        is_pivot = (0 < i < len(run) - 1 and len(p["text"]) <= 30)
-        style = pause if (is_last or is_pivot) else base
-        out.append(Paragraph(esc(p["text"]), style))
+        text = p["text"]
+        base = S["dialogue"] if is_dialogue(text) else S["story"]
+        length = len(text)
+        is_last = (i == n - 1 and n >= 2)
+        is_short = length <= 30
+        is_long = length >= 90
+
+        extra_before = 0
+        extra_after = 0
+        if is_last:
+            extra_before = max(extra_before, 12)   # 결론 문장 앞 여백 확대
+            extra_after = max(extra_after, 11)     # 다음 카드/제목으로 넘어가기 전 숨쉬기(기존 유지)
+        if is_short:
+            extra_before = max(extra_before, 9)    # 짧은 전환/중요 문장 — 혼자 숨쉬게(양쪽)
+            extra_after = max(extra_after, 10)
+        if is_long and not is_short:
+            extra_after = max(extra_after, 4)      # 긴 문단 뒤 아주 약간의 여유
+
+        if extra_before or extra_after:
+            style = ParagraphStyle(
+                f"story_dyn_{i}_{id(p)}", parent=base,
+                spaceBefore=(base.spaceBefore or 0) + extra_before,
+                spaceAfter=base.spaceAfter + extra_after,
+            )
+        else:
+            style = base
+        out.append(Paragraph(esc(text), style))
     return out
 
 
@@ -1192,10 +1242,11 @@ def build():
                 idx = j
                 continue
 
-            if len(run) >= 2:
-                emit(render_para_run(run))
-                idx = j
-                continue
+            # Round 5: 문단이 1개뿐이어도(짧은 독립 문장/긴 문단) 리듬 규칙이
+            # 적용되도록 항상 render_para_run()을 거친다.
+            emit(render_para_run(run))
+            idx = j
+            continue
 
         flows = produce(b, in_practice)
         if keep_buffer is None and t in ("table", "image", "blockquote", "checklist") and flows:
