@@ -366,7 +366,10 @@ def box_workflow(body):
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBEFORE", (0, 0), (0, 0), 2.5, NAVY),  # Final Book Polish: 덜어내기 — 3->2.5pt
+        # Round 7(인쇄 교정): 왼쪽 세로선이 본문 텍스트보다 더 진한 순색
+        # NAVY라 카드 안에서 가장 먼저 눈에 띄었다. 다른 보조선들과 같은 톤
+        # (NAVY_SOFT)으로 한 단계 낮춰 번호·문장이 먼저 읽히게 한다.
+        ("LINEBEFORE", (0, 0), (0, 0), 2.5, NAVY_SOFT),
     ]))
     return [wrap]
 
@@ -718,8 +721,11 @@ def cover_part(num, title, chapters):
     big_num_style = ParagraphStyle("bigpartnum", fontName="NotoKR-Bold", fontSize=132, leading=118, textColor=SKY)
     story = [Spacer(1, 34)]
     story.append(Paragraph(f"{num:02d}", big_num_style))
+    # Round 7(인쇄 교정): 이 짧은 선은 숫자와 라벨 사이의 구분선일 뿐인데
+    # 순색 NAVY라 옆의 옅은 숫자·라벨보다 더 진하게 튀었다. 제목보다 뒤로
+    # 물러나도록 다른 보조 요소와 같은 NAVY_SOFT로 한 단계 낮춘다(두께는 유지).
     rule = Table([[""]], colWidths=[36], rowHeights=[3])
-    rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY)]))
+    rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY_SOFT)]))
     story.append(Spacer(1, 4))
     story.append(rule)
     story.append(Spacer(1, 10))
@@ -1008,8 +1014,15 @@ def render_para_run(run):
             style = base
         out.append(Paragraph(esc(text), style))
 
-    if n == 2 and sum(len(p["text"]) for p in run) <= 160:
-        return [KeepTogether(out)]
+    # Round 8(전체 조판 QA): 짧은 문장이 여러 개 이어지는 긴 묶음(예: PART
+    # 도입부의 '행동. / 시작. / 끝. / 다음 행동...' 같은 스타카토 문장들)에서도
+    # 마지막 문장 하나만 혼자 다음 페이지로 밀려나 "텅 빈 페이지에 한 줄"이
+    # 되는 경우가 250페이지 전체 조판에서 실제로 발견됐다(Round 6에서는 묶음이
+    # 정확히 2문단일 때만 방지했었음). 묶음 길이와 무관하게 마지막 두 문단은
+    # 합쳐서 160자 이하일 때 KeepTogether로 묶어, 결론 문장이 절대 혼자
+    # 남지 않게 한다. 그 앞의 문단들은 기존처럼 자유롭게 페이지가 넘어간다.
+    if n >= 2 and sum(len(p["text"]) for p in run[-2:]) <= 160:
+        return out[:-2] + [KeepTogether(out[-2:])]
     return out
 
 
@@ -1121,6 +1134,7 @@ def build():
 
     keep_buffer = None
     in_practice = False
+    pending_part_intro = False  # PART 표지 직후 원고 도입 문단이 있으면 True
 
     def emit(flowables):
         nonlocal keep_buffer
@@ -1151,6 +1165,17 @@ def build():
             # 시점에만 CURRENT를 갱신하므로 여기서 CURRENT를 직접 건드리지 않는다.
             BUILD_STATE["part_num"] = b["num"]
             story.append(_RunningHeaderMarker(part_num=b["num"], chapter_num=None))
+            # 전체 조판 QA에서 발견된 버그: PART 5·6·7·8처럼 "## PART n" 제목과
+            # "### Chapter" 사이에 원고 자체의 짧은 도입 문단(원고 내용, 수정 불가)이
+            # 있는 경우, 이 문단들이 PART 표지와 같은 물리적 페이지로 흘러 들어가
+            # "막이 열리는" 전용 표지 페이지가 깨지는 문제가 있었다. 다음 블록이
+            # chapter/epilogue_head/part가 아니면(=원고 도입 문단이 있으면) 여기서
+            # 페이지를 강제로 넘겨 표지는 항상 단독 페이지로 남긴다. 다음 블록이
+            # chapter/epilogue_head이면 그쪽에서 이미 자체 PageBreak를 넣으므로
+            # 여기서는 추가하지 않아 빈 페이지가 끼어드는 것을 막는다.
+            if idx + 1 < N and blocks[idx + 1]["type"] not in ("chapter", "epilogue_head", "part"):
+                story.append(PageBreak())
+                pending_part_intro = True
             idx += 1
             continue
 
@@ -1182,6 +1207,17 @@ def build():
             if keep_buffer is not None:
                 story.append(KeepTogether(keep_buffer))
             keep_buffer = None
+            idx += 1
+            continue
+
+        if t == "hr" and idx + 1 < N and blocks[idx + 1]["type"] in ("part", "chapter", "epilogue_head"):
+            # 전체 조판 QA에서 확인된 버그: "---"(hr)가 곧바로 PART/Chapter/
+            # 에필로그 표지의 PageBreak()로 이어질 때, hr이 렌더링하는 작은
+            # Spacer(1,4)가 페이지 맨 아래 몇 pt 안 남은 자리에 걸치면 그
+            # 직후 PageBreak()와 겹쳐 완전히 빈 페이지가 하나 더 생기는
+            # ReportLab 동작을 실제로 재현·확인했다(구 159페이지). 이 위치의
+            # hr은 어차피 다음 쪽이 표지로 넘어가면서 시각적으로 아무 의미가
+            # 없으므로, 이 경우에만 hr의 스페이서를 생략한다.
             idx += 1
             continue
 
@@ -1252,7 +1288,18 @@ def build():
 
             # Round 5: 문단이 1개뿐이어도(짧은 독립 문장/긴 문단) 리듬 규칙이
             # 적용되도록 항상 render_para_run()을 거친다.
-            emit(render_para_run(run))
+            para_flows = render_para_run(run)
+            if pending_part_intro:
+                # PART 표지 직후 원고 도입 문단은 자연스럽게 흘러가도록
+                # 둔다(강제로 하나의 KeepTogether로 묶으면 ReportLab이 그
+                # 경계에서 완전히 빈 페이지를 만드는 것을 실제로 확인했다 —
+                # 구 159페이지). 표지 자체는 이미 위에서 별도 PageBreak로
+                # 단독 페이지가 보장되어 있으므로, 도입 문단은 그냥 일반
+                # 흐름(emit)으로 렌더링해도 표지 페이지를 침범하지 않는다.
+                emit(para_flows)
+                pending_part_intro = False
+            else:
+                emit(para_flows)
             idx = j
             continue
 
