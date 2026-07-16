@@ -94,10 +94,17 @@ S["body"] = ParagraphStyle("body", fontName="NotoKR", fontSize=9.6, leading=18.8
 S["story"] = ParagraphStyle("story", fontName="NotoKR", fontSize=10, leading=19, textColor=INK, spaceAfter=13,
                              leftIndent=11, rightIndent=11)
 S["dialogue"] = ParagraphStyle("dialogue", parent=S["story"], leftIndent=22, textColor=NAVY, fontName="NotoKR-Bold")
+# Final Book Polish — 본문 리듬: 행간(leading)은 그대로 두고 문단 간격(spaceAfter)만
+# 다르게 써서 "중요한 문장 뒤 / 설명 전환 / 사례 전환"에서 숨을 쉬게 한다. 새 문장은
+# 추가하지 않고, 같은 문장을 다른 간격으로 배치할 뿐이다.
+S["story_pause"] = ParagraphStyle("story_pause", parent=S["story"], spaceAfter=24)
+S["dialogue_pause"] = ParagraphStyle("dialogue_pause", parent=S["dialogue"], spaceAfter=24)
 S["beat"] = ParagraphStyle("beat", fontName="NotoKR-Bold", fontSize=11.5, leading=18, textColor=NAVY, alignment=TA_CENTER, spaceBefore=10, spaceAfter=10)
 S["cardlabel"] = ParagraphStyle("cardlabel", fontName="NotoKR-Bold", fontSize=9.2, leading=13, textColor=NAVY)
 S["cardbody"] = ParagraphStyle("cardbody", fontName="NotoKR", fontSize=8.8, leading=14.5, textColor=INK)
-S["caption"] = ParagraphStyle("caption", fontName="NotoKR", fontSize=8.3, leading=13.2, textColor=NAVY_SOFT, spaceBefore=6, spaceAfter=10, alignment=TA_CENTER)
+# Final Book Polish — 이미지 -> 캡션 -> 본문 위계: 캡션은 본문(9.6~10pt, INK)보다
+# 한 단계 더 조용해야 하므로, 브랜드 색(NAVY_SOFT)이 아니라 중립 GRAY로 낮췄다.
+S["caption"] = ParagraphStyle("caption", fontName="NotoKR", fontSize=8.1, leading=13, textColor=GRAY, spaceBefore=6, spaceAfter=11, alignment=TA_CENTER)
 S["takeaway"] = ParagraphStyle("takeaway", fontName="NotoKR-Bold", fontSize=11.8, leading=17.5, textColor=NAVY, alignment=TA_CENTER, spaceBefore=10)
 S["step_title"] = ParagraphStyle("step_title", fontName="NotoKR-Bold", fontSize=10.1, leading=14, textColor=NAVY)
 S["step_body"] = ParagraphStyle("step_body", fontName="NotoKR", fontSize=9.0, leading=14.5, textColor=INK)
@@ -149,7 +156,11 @@ def running_header_flowable(left_text, right_text):
     return t
 
 
-def soft_card(rows_flowables, pad=12, bg=SKY, radius=12, box=False, box_color=SKY_LINE):
+def soft_card(rows_flowables, pad=12, bg=SKY, radius=10, box=False, box_color=SKY_LINE):
+    """Final Book Polish — 카드가 'UI 컴포넌트'처럼 보이지 않도록 모서리를
+    한 단계 덜 둥글게(radius 12->10, 약 17% 축소) 하고, 배경색은 그대로 두되
+    아주 연한 0.3~0.5pt 테두리를 항상 그린다(그림자·입체효과·새 색상 추가 없음 —
+    카드의 경계를 화면 버튼이 아니라 인쇄물의 옅은 박스처럼 보이게 하는 선 하나뿐)."""
     data = [[rows_flowables]]
     t = Table(data, colWidths=[CONTENT_W])
     style = [
@@ -160,9 +171,8 @@ def soft_card(rows_flowables, pad=12, bg=SKY, radius=12, box=False, box_color=SK
         ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ROUNDEDCORNERS", [radius, radius, radius, radius]),
+        ("BOX", (0, 0), (-1, -1), 0.5 if box else 0.4, box_color),
     ]
-    if box:
-        style.append(("BOX", (0, 0), (-1, -1), 1, box_color))
     t.setStyle(TableStyle(style))
     return t
 
@@ -183,7 +193,7 @@ def stamp(text, bold_prefix="완료 확인", with_otter=False):
         ("TOPPADDING", (0, 0), (-1, -1), 9), ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
         ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+        ("ROUNDEDCORNERS", [7, 7, 7, 7]),
     ]))
     return t
 
@@ -239,7 +249,10 @@ def _workflow_step_label(n, text, is_label):
         return Paragraph(esc(text), S["cardlabel"])
     num_style = ParagraphStyle("wfnum", fontName="NotoKR-Bold", fontSize=8.6, textColor=NAVY_SOFT, alignment=TA_CENTER)
     badge = Paragraph(f"{n:02d}", num_style)
-    body = Paragraph(esc(text), ParagraphStyle("wfstep", parent=S["cardbody"], fontName="NotoKR-Bold", textColor=NAVY))
+    # Final Book Polish: 덜어내기 — 번호 배지가 이미 순서를 알려주므로 단계 설명
+    # 문장까지 볼드로 만들 필요는 없다. 굵기를 빼고 색만 NAVY로 유지해 조용히
+    # 구분되게 한다.
+    body = Paragraph(esc(text), ParagraphStyle("wfstep", parent=S["cardbody"], textColor=NAVY))
     avail_w = CONTENT_W - 2 * 18  # box_workflow의 soft_card pad=18 안에서 실제로 쓸 수 있는 폭
     row = Table([[badge, body]], colWidths=[26, avail_w - 26])
     row.setStyle(TableStyle([
@@ -329,7 +342,7 @@ def box_case(body):
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBEFORE", (0, 0), (0, 0), 3, CASE_LINE),
+        ("LINEBEFORE", (0, 0), (0, 0), 2.5, CASE_LINE),  # Final Book Polish: 덜어내기 — 3->2.5pt
     ]))
     return [wrap]
 
@@ -344,7 +357,7 @@ def box_workflow(body):
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBEFORE", (0, 0), (0, 0), 3, NAVY),
+        ("LINEBEFORE", (0, 0), (0, 0), 2.5, NAVY),  # Final Book Polish: 덜어내기 — 3->2.5pt
     ]))
     return [wrap]
 
@@ -354,7 +367,7 @@ def box_caution(body):
     아주 옅은 웜/코랄 톤만 사용한다(새 색상 체계 추가가 아니라 보조 포인트)."""
     lines = body_lines(body)
     label_style = ParagraphStyle("warnlabel", parent=S["cardlabel"], textColor=WARN_TEXT)
-    return [soft_card(render_lines(lines, label_style=label_style), pad=12, bg=WARN_BG, radius=12, box=True, box_color=WARN_LINE)]
+    return [soft_card(render_lines(lines, label_style=label_style), pad=12, bg=WARN_BG, radius=10, box=True, box_color=WARN_LINE)]
 
 
 def box_core_message(body):
@@ -437,7 +450,7 @@ def box_author_note(body):
     wrap.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("LINEBEFORE", (0, 0), (0, 0), 3, NOTE_LINE),
+        ("LINEBEFORE", (0, 0), (0, 0), 2.5, NOTE_LINE),  # Final Book Polish: 덜어내기 — 3->2.5pt
     ]))
     return [wrap]
 
@@ -477,8 +490,8 @@ def box_qr(body, qr_path):
     t = Table([[left, qr_img]], colWidths=[CONTENT_W - 86, 86])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), WHITE),
-        ("BOX", (0, 0), (-1, -1), 1, SKY_LINE),
-        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+        ("BOX", (0, 0), (-1, -1), 0.5, SKY_LINE),
+        ("ROUNDEDCORNERS", [8, 8, 8, 8]),
         ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
         ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -491,7 +504,7 @@ def box_prompt(body):
     out = [Paragraph(tracked("PROMPT"), ParagraphStyle("promptlabel", fontName="NotoKR-Bold", fontSize=8.2, textColor=NAVY_SOFT)),
            Spacer(1, 4)]
     out += [Paragraph(esc(l), S["prompt"]) for l in lines]
-    return [soft_card(out, pad=11, bg=WHITE, radius=10, box=True)]
+    return [soft_card(out, pad=11, bg=WHITE, radius=8, box=True)]
 
 
 def box_generic(body):
@@ -542,9 +555,10 @@ def table_before_after(cells):
         after_box = Table([[after_p]], colWidths=[avail_w])
         after_box.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+            ("BOX", (0, 0), (-1, -1), 0.4, SKY_LINE),
             ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-            ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+            ("ROUNDEDCORNERS", [7, 7, 7, 7]),
         ]))
         out += [before_p, arrow_p, after_box, Spacer(1, 6)]
     # 원고 자체에 "#### 오늘 바뀐 것" 제목이 이미 별도로 렌더링되므로,
@@ -630,7 +644,7 @@ def render_image_block(block):
             iw, ih = im.size
         disp_w = CONTENT_W * 0.96
         disp_h = ih * (disp_w / iw)
-        max_h = 410
+        max_h = 405
         if disp_h > max_h:
             disp_h = max_h
             disp_w = iw * (max_h / ih)
@@ -722,7 +736,7 @@ def _chip_row(labels):
         ("BACKGROUND", (0, 0), (-1, -1), SKY),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("ROUNDEDCORNERS", [10, 10, 10, 10]),
+        ("ROUNDEDCORNERS", [8, 8, 8, 8]),
     ]))
     return t
 
@@ -895,16 +909,21 @@ def render_workflow_poster(block):
     """책 전체를 설명하는 대표 인포그래픽(IMG-002) — 삽화가 아니라 포스터처럼."""
     fname = os.path.basename(block["src"])
     path = os.path.join(ASSETS, fname)
-    flows = [Spacer(1, 4)]
+    flows = [Spacer(1, 2)]
     flows.append(Paragraph("이 책의 Workflow", ParagraphStyle("wftitle", fontName="NotoKR-Bold",
                                                              fontSize=14.5, textColor=NAVY, alignment=TA_CENTER)))
-    flows.append(Spacer(1, 10))
+    flows.append(Spacer(1, 6))
     if os.path.exists(path):
         with PILImage.open(path) as im:
             iw, ih = im.size
         disp_w = CONTENT_W * 1.0
         disp_h = ih * (disp_w / iw)
-        max_h = 383
+        # Final Book Polish — 이 페이지는 "책의 얼굴"이므로 포스터 이미지만 약 5%
+        # 확대해 임팩트를 더한다(383 -> 402, 5~8% 범위 하한). 본문 텍스트·다른
+        # 이미지는 그대로 두고, 이 포스터만 본문 여백을 살짝 넘어서도록 허용한다.
+        # 확대분을 같은 페이지 안에 담기 위해 제목·캡션 주변의 여백만 아주
+        # 조금 줄였다(문장·크기 자체는 그대로).
+        max_h = 402
         if disp_h > max_h:
             disp_h = max_h
             disp_w = iw * (max_h / ih)
@@ -912,9 +931,28 @@ def render_workflow_poster(block):
     cap = block.get("caption", "")
     if cap:
         cap_clean = re.sub(r'^IMG-\d+\s*[·\-]\s*', '', cap).strip()
-        flows.append(Paragraph(esc(cap_clean), S["caption"]))
-    flows.append(Paragraph("이 책은 이 Workflow를 하나씩 완성하는 과정입니다.", S["takeaway"]))
+        flows.append(Paragraph(esc(cap_clean), ParagraphStyle("wfcap", parent=S["caption"], spaceBefore=4)))
+    flows.append(Paragraph("이 책은 이 Workflow를 하나씩 완성하는 과정입니다.",
+                            ParagraphStyle("wftakeaway", parent=S["takeaway"], spaceBefore=6)))
     return flows
+
+
+def render_para_run(run):
+    """본문 리듬 — 연속된 여러 '문단'을 한 번에 받아, 짧은 pivot 문장(문단 전환/
+    사례 전환으로 보이는 문장)과 묶음의 마지막 문단 뒤에 더 넓은 간격(spaceAfter만)을
+    줘 숨을 쉬게 한다. 행간·문장·순서는 그대로 두고 문단 간격만 다르게 쓴다.
+    full_build()의 본문 조판과 brand_samples.py의 12페이지 샘플 렌더러가 동일하게
+    이 함수를 통해서만 문단을 렌더링해야, 샘플에서 본 리듬이 실제 전체 조판과
+    같아진다."""
+    out = []
+    for i, p in enumerate(run):
+        base = S["dialogue"] if is_dialogue(p["text"]) else S["story"]
+        pause = S["dialogue_pause"] if is_dialogue(p["text"]) else S["story_pause"]
+        is_last = (i == len(run) - 1)
+        is_pivot = (0 < i < len(run) - 1 and len(p["text"]) <= 30)
+        style = pause if (is_last or is_pivot) else base
+        out.append(Paragraph(esc(p["text"]), style))
+    return out
 
 
 def produce(b, in_practice=False):
@@ -1151,6 +1189,11 @@ def build():
                     story.append(KeepTogether(beat_flows))
                 else:
                     keep_buffer.extend(beat_flows)
+                idx = j
+                continue
+
+            if len(run) >= 2:
+                emit(render_para_run(run))
                 idx = j
                 continue
 

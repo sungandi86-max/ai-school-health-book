@@ -32,10 +32,28 @@ for b in blocks:
 
 
 def render_blocks(idxs, in_practice=False):
+    # 본문 리듬(문단 간격 차등화)이 전체 조판(full_build)과 똑같이 보이도록,
+    # 연속된 "para" 블록은 개별 produce() 대신 bb.render_para_run()으로 한 번에
+    # 처리한다(짧은 pivot 문장·묶음 마지막 문단 뒤에 더 넓은 간격).
     flows = []
-    for i in idxs:
+    i0 = 0
+    n = len(idxs)
+    while i0 < n:
+        i = idxs[i0]
         b = blocks[i]
         t = b["type"]
+        if t == "para":
+            run = [b]
+            j0 = i0 + 1
+            while j0 < n and blocks[idxs[j0]]["type"] == "para":
+                run.append(blocks[idxs[j0]])
+                j0 += 1
+            if len(run) >= 2:
+                flows.extend(bb.render_para_run(run))
+            else:
+                flows.extend(bb.produce(b, in_practice))
+            i0 = j0
+            continue
         if t == "h4":
             flows.append(Paragraph(bb.esc(b["text"]), bb.S["h2"]))
         elif t == "h5":
@@ -43,11 +61,12 @@ def render_blocks(idxs, in_practice=False):
                 "h5tag", fontName="NotoKR-Bold", fontSize=10, textColor=bb.NAVY,
                 spaceBefore=6, spaceAfter=4)))
         elif t == "hr":
-            continue
+            pass
         elif t in ("keep_start", "keep_end"):
-            continue
+            pass
         else:
             flows.extend(bb.produce(b, in_practice))
+        i0 += 1
     return flows
 
 
