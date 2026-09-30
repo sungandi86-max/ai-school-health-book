@@ -7,7 +7,7 @@
 - 새 디자인을 만들지 않는다. 기존 build_pdf.py(v1 조판)는 참고하지 않는다.
 - 원고/Chapter·PART 순서/실습 내용/QR/이미지는 절대 수정하지 않는다.
 """
-import os, re
+import os, re, sys
 from reportlab.lib.pagesizes import A5
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
@@ -20,13 +20,20 @@ from reportlab.platypus import (
 from reportlab.lib.styles import ParagraphStyle
 from PIL import Image as PILImage
 
+DESIGN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if DESIGN_ROOT not in sys.path:
+    sys.path.insert(0, DESIGN_ROOT)
+
 from parser import parse, classify_blockquote
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-ASSETS = os.path.join(BASE, "assets")
+REPO_ROOT = os.path.dirname(DESIGN_ROOT)
+SOURCE = os.path.join(REPO_ROOT, "book-source", "book-source-final.md")
+ASSETS = os.path.join(REPO_ROOT, "assets")
 FONTS = os.path.join(BASE, "fonts")
-QR = os.path.join(BASE, "qr")
-OUT = os.path.join(BASE, "book-v2-final.pdf")
+QR = os.environ.get("BOOK_V3_QR_DIR", os.path.join(BASE, "qr"))
+OUT = os.path.join(REPO_ROOT, "design-v2", "fullbook", "book-v3-rebuild.pdf")
+BASELINE = os.path.join(REPO_ROOT, "design-v2", "fullbook", "book-v3-final.pdf")
 
 pdfmetrics.registerFont(TTFont("NotoKR", os.path.join(FONTS, "NotoKR-Regular.ttf")))
 pdfmetrics.registerFont(TTFont("NotoKR-Bold", os.path.join(FONTS, "NotoKR-Bold.ttf")))
@@ -1100,7 +1107,11 @@ QR_COUNTER = 0
 
 # ---------------- main build ----------------
 def build():
-    blocks = parse(os.path.join(BASE, "book-source-final.md"))
+    if os.path.exists(OUT) and os.path.samefile(OUT, BASELINE):
+        raise OSError("Rebuild output aliases the protected v3 baseline")
+    if os.path.lexists(OUT):
+        os.unlink(OUT)
+    blocks = parse(SOURCE)
     N = len(blocks)
 
     # PART -> chapter 목록 미리 계산 (PART 표지의 Chapter 범위 표기용)
