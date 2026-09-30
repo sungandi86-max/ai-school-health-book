@@ -1,6 +1,6 @@
 # 출판용 앱 화면 캡처 계획
 
-기준일: 2026-09-30
+기준일: 2026-10-01
 이 계획은 현재 앱 저장소의 실제 route·component·schema를 기준으로 한다. 아직 캡처를 수행하지 않으며, 구현되지 않은 화면을 출판용으로 만들지 않는다.
 
 ## 공통 원칙
@@ -27,6 +27,11 @@
 
 repository: `C:/Users/보건실/OneDrive/문서/GitHub/sehwa-health-portal`
 기준: `main` @ `7685aae6b6959321708afd06853433e6785f8374`
+캡처 상태: `READY — MOCK DATA REQUIRED`
+
+- 최신 Firebase v2 화면을 출판 기준으로 우선한다.
+- Apps Script 화면은 비밀번호 방식에서 교직원 로그인·학기별 권한으로 바뀐 과정을 비교할 때만 사용한다.
+- 실제 학교명, 학생·교직원 정보와 내부 URL을 제거한 mock 운영 구조로 캡처한다.
 
 | route/page/component | 화면 이름 | 현재 구현 | 캡처 목적 | 보여줄 상태 | 필요한 mock 데이터 | 개인정보 위험 | 범위 | Chapter | 캡션 초안 |
 |---|---|---|---|---|---|---|---|---|---|
@@ -42,7 +47,7 @@ repository: `C:/Users/보건실/OneDrive/문서/GitHub/sehwa-health-portal`
 
 캡처 전 확인:
 
-- legacy 화면과 Firebase v2 중 본문에서 설명하는 흐름을 먼저 확정한다.
+- 기본 캡처는 Firebase v2로 통일하고, Apps Script 화면은 변화 비교용인지 명시한다.
 - 실제 학교명이 포함된 기존 자산은 사용하지 않는다.
 - 전환이 완료됐다는 인상을 주지 않도록 버전과 화면 계열을 캡처 로그에 남긴다.
 
@@ -50,6 +55,12 @@ repository: `C:/Users/보건실/OneDrive/문서/GitHub/sehwa-health-portal`
 
 repository: `C:/Users/보건실/OneDrive/문서/GitHub/school-health-check-scheduler`
 기준: `master` @ `7cdda888413e6f8289e56618223b230ebad34b7e`
+캡처 상태: `READY — DESIGNED SCENARIO, NOT FIELD-VALIDATED`
+
+- 모든 화면은 실제 운영 결과가 아니라 저자의 현장 경험을 바탕으로 만든 설계 시나리오다.
+- 캡처 묶음 전체에서 `대기 / 이동 / 검사중 / 완료 / 지연 / 확인필요`의 운영 의미가 모두 보이게 구성한다.
+- 실제 구현처럼 학급 상태, 이동 안내, 검사 중 표시, 지연 값, 학생 예외를 구분한다. 하나의 통합 상태 열거형처럼 보이게 만들지 않는다.
+- 실제 검사 당일에 이미 검증된 화면이라는 표현을 사용하지 않는다.
 
 | route/page/component | 화면 이름 | 현재 구현 | 캡처 목적 | 보여줄 상태 | 필요한 mock 데이터 | 개인정보 위험 | 범위 | Chapter | 캡션 초안 |
 |---|---|---|---|---|---|---|---|---|---|
@@ -63,19 +74,27 @@ repository: `C:/Users/보건실/OneDrive/문서/GitHub/school-health-check-sched
 
 캡처 전 확인:
 
-- 통합 여섯 상태 화면을 만들지 않는다. 실제 구현처럼 학급 상태, 지연 값, 학생 예외 상태를 구분한다.
+- 여섯 표현을 한 화면에 억지로 합치지 않고 교사용·관리자·현황판·예외 화면의 연속 시나리오로 보여준다.
 - QR 토큰·인증·RLS가 완성된 것처럼 보이는 화면이나 캡션을 사용하지 않는다.
 - sample CSV를 기반으로 출판 전용 세션을 준비하되 실제 학생 자료는 섞지 않는다.
+- 캡션에 `AI 시뮬레이션으로 확인한 설계 시나리오이며 실제 현장 검증 전`임을 표시한다.
 
 ## BOGUNON
 
 repository: `C:/Users/보건실/OneDrive/문서/GitHub/bogunon`
 기준: `main` @ `bfdc46e991f79ed34ba6805c513151d344daa83a`
+캡처 상태: `READY — CURRENT IMPLEMENTATION`
+
+- 현재 저장소에 구현된 기능만 캡처한다.
+- 우선 캡처 범위는 일정관리, 연간계획↔실무일정, 보건지원강사 관리, 행사 보건지원, 연락처다.
+- 연락처 영역은 아직 덜 다듬어진 상태임을 캡처 선정과 본문에 반영한다.
 
 | route/page/component | 화면 이름 | 현재 구현 | 캡처 목적 | 보여줄 상태 | 필요한 mock 데이터 | 개인정보 위험 | 범위 | Chapter | 캡션 초안 |
 |---|---|---|---|---|---|---|---|---|---|
 | `app/(app)/briefing/page.tsx`, `briefing-screen.tsx` | 통합 홈 | IMPLEMENTED | 흩어진 정보의 시작점 제시 | 날짜 기록, 일정, 학교 정보가 채워진 상태 | 가상 일정·학교정보 | 실제 학교명·계정 | 전체 | 17 | 흩어진 정보를 모두 모으기보다 오늘 판단할 정보의 시작점을 만듭니다. |
 | `app/(app)/calendar/page.tsx` | 캘린더 | IMPLEMENTED | 날짜에서 다음 행동으로 이어지는 구조 제시 | 월·주·일 보기와 일정 | 가상 검진·교육·회의 | 실제 학사일정 | 전체+일정 확대 | 17~18 | 일정은 날짜를 적는 칸이 아니라 다음 업무가 시작되는 기준입니다. |
+| `app/(app)/annual/page.tsx`, `app/(app)/practical-schedules/page.tsx` | 연간계획과 실무일정 | IMPLEMENTED | 연간계획이 실제 일정으로 이어지는 구조 제시 | 가상 연간계획과 연결된 실무일정 | 가상 연간업무·실행일 | 실제 학교 연간계획 | 나란한 화면 | 19 | 연간계획이 문서에서 끝나지 않고 실무일정으로 이어질 때 계획이 실제 운영이 됩니다. |
+| `app/(app)/health-support-instructors/page.tsx` | 보건지원강사 관리 | IMPLEMENTED | 실제로 사용하는 대표 업무 사례 제시 | 가상 강사 일정과 관리 항목 | 가상 강사·일정 | 실제 강사 이름·연락처 | 전체+일정 확대 | 19 | 자주 쓰는 관리 업무를 기존 일정 흐름과 연결해 확인합니다. |
 | `app/(app)/tasks/page.tsx` | 업무 | IMPLEMENTED | 업무 상태와 완료 기준 제시 | 진행 중·회신 대기·확인 필요·완료 | 가상 업무 5건 | 학생·상담 정보 | 전체 | 18 | 할 일을 상태로 남기면 다음에 누가 무엇을 확인할지가 보입니다. |
 | `app/(app)/event-health-support/page.tsx` | 행사 보건지원 | IMPLEMENTED | 행사 정보를 준비 행동으로 변환 | 가상 체육행사와 준비물 체크리스트 | 행사·장소·담당·준비물 | 실제 행사·담당자 | 전체+체크리스트 확대 | 18 | 행사 한 건을 준비물과 확인 행동으로 나누어 당일 운영까지 잇습니다. |
 | `app/(app)/staff-contacts/page.tsx` | 교직원 연락처 | IMPLEMENTED | 학기별 역할 정보를 업무에 연결 | 검색·즐겨찾기·그룹·가상 학기 배정 | 가상 교직원 10명 | 전화·내선·부서 배정 | 전체 | 18 | 연락처는 사람 목록이 아니라 필요한 순간 다음 행동을 이어주는 정보입니다. |
@@ -91,7 +110,11 @@ repository: `C:/Users/보건실/OneDrive/문서/GitHub/bogunon`
 
 repository: `C:/Users/보건실/OneDrive/문서/GitHub/school-health-desk`
 기준: `main` @ `7fa8988750f008f6ea2c736df17f616ada076626`
-최종 캡처 상태: 기능 동결 전 보류
+최종 캡처 상태: `PENDING — AFTER FEATURE FREEZE`
+
+- 현재는 설치·테스트 단계이며 상시 실사용 검증 전이다.
+- 이번 주 기능 동결 후 현재 main, 실제 설치본 QA와 완주 가능한 업무 흐름을 다시 확인한다.
+- 기능 동결 전 화면은 구조 확인용일 뿐 최종 출판 화면으로 확정하지 않는다.
 
 | route/page/component | 화면 이름 | 현재 구현 | 캡처 목적 | 보여줄 상태 | 필요한 mock 데이터 | 개인정보 위험 | 범위 | Chapter | 캡션 초안 |
 |---|---|---|---|---|---|---|---|---|---|
